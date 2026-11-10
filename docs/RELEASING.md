@@ -2,8 +2,8 @@
 
 ## Repository setup
 
-The repository URL/visibility must be selected before publishing. Direct GitHub
-Releases update URLs require a public release repository. For private source,
+The public repository is https://github.com/chinchindev/netbridge. Direct GitHub
+Releases update URLs use this repository. For private source,
 use a separate public distribution repository or design authenticated distribution;
 never embed a shared GitHub token in the application.
 
@@ -14,7 +14,7 @@ node scripts/configure-updater.mjs OWNER/REPOSITORY
 ```
 
 The release workflow sets the endpoint to its own `GITHUB_REPOSITORY` in the build
-checkout. Local configuration deliberately has no endpoint until the target is known.
+checkout. Local configuration uses https://github.com/chinchindev/netbridge/releases/latest/download/latest.json.
 
 ## Signing keys
 

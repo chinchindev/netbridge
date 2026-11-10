@@ -5,7 +5,7 @@ Giao diện Angular/Tauri, lõi Rust, ADB tích hợp, kiểm tra TCP và đo t�
 
 ## Sử dụng
 
-Dùng bộ cài NSIS từ GitHub Releases sau khi repository và release đã được thiết lập.
+Dùng bộ cài NSIS từ [GitHub Releases](https://github.com/chinchindev/netbridge/releases).
 EXE rời cần Microsoft Edge WebView2 Runtime có sẵn. Bộ cài phát hành chứa runtime offline.
 
 - Chọn adapter LAN/USB, kiểm tra quy tắc rồi bật phân luồng.
