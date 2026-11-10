@@ -1,0 +1,30 @@
+{
+  "name": "netbridge-desktop",
+  "version": "0.3.0",
+  "private": true,
+  "scripts": {
+    "start": "ng serve --host 127.0.0.1 --port 1420",
+    "build": "ng build",
+    "test:e2e": "playwright test",
+    "test:production": "node tests-production/csp.cjs",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@angular/common": "22.2.5",
+    "@angular/compiler": "22.2.5",
+    "@angular/core": "22.2.5",
+    "@angular/forms": "22.2.5",
+    "@angular/platform-browser": "22.2.5",
+    "@tauri-apps/api": "2.12.4",
+    "rxjs": "~7.8.2",
+    "tslib": "^2.8.1"
+  },
+  "devDependencies": {
+    "@angular/build": "22.2.6",
+    "@angular/cli": "22.2.6",
+    "@angular/compiler-cli": "22.2.5",
+    "@playwright/test": "1.65.0",
+    "@tauri-apps/cli": "2.12.4",
+    "typescript": "~6.0.0"
+  }
+}

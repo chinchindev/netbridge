@@ -1,0 +1,102 @@
+name: Windows signed release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/desktop/src-tauri/target
+      RUSTFLAGS: -C target-feature=+crt-static
+      NETBRIDGE_RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
+        with:
+          toolchain: 1.95.0
+          targets: x86_64-pc-windows-msvc
+          components: clippy
+      - run: npm ci
+        working-directory: desktop
+      - name: Validate version and configure release endpoint
+        run: |
+          node scripts/version.mjs --check
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node --test scripts/release.test.mjs
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node scripts/configure-updater.mjs
+          exit $LASTEXITCODE
+      - run: npm run build
+        working-directory: desktop
+      - name: Verify Rust before signing
+        shell: pwsh
+        run: |
+          cargo test --locked --manifest-path Cargo.toml --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cargo test --locked --manifest-path desktop/src-tauri/Cargo.toml --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cargo clippy --locked --manifest-path desktop/src-tauri/Cargo.toml --target x86_64-pc-windows-msvc --all-targets -- -D warnings
+          exit $LASTEXITCODE
+      - run: npx playwright install chromium
+        working-directory: desktop
+      - name: Verify UI and production CSP
+        working-directory: desktop
+        shell: pwsh
+        run: |
+          npm run test:e2e -- --grep-invert "capture design states"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          npm run test:production
+          exit $LASTEXITCODE
+      - name: Build signed NSIS installer with offline WebView2
+        working-directory: desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        shell: pwsh
+        run: |
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) { throw 'Missing TAURI_SIGNING_PRIVATE_KEY repository secret' }
+          npm run tauri -- build --target x86_64-pc-windows-msvc --bundles nsis
+          exit $LASTEXITCODE
+      - name: Prepare update manifest and checksums
+        shell: pwsh
+        run: |
+          python scripts/collect-licenses.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node scripts/release-manifest.mjs
+          exit $LASTEXITCODE
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: signed-windows-release
+          path: dist/github-release/*
+          if-no-files-found: error
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: signed-windows-release
+          path: release
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          args=()
+          if [[ "$RELEASE_TAG" == *-* ]]; then args+=(--prerelease); fi
+          gh release create "$RELEASE_TAG" release/* --verify-tag --title "NetBridge $RELEASE_TAG" --generate-notes "${args[@]}"

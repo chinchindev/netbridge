@@ -1,0 +1,62 @@
+import {test,expect} from '@playwright/test';
+test.beforeEach(async({page})=>{await page.goto('/');await page.getByRole('button',{name:'Đo mạng',exact:true}).click();});
+test('unit picker shows a styled list, commits once and keeps the same measurement',async({page})=>{
+ await page.getByRole('button',{name:'Đo tốc độ',exact:true}).click();
+ await expect(page.locator('.speed-card')).toHaveCount(2);
+ const picker=page.getByRole('combobox',{name:'Hiển thị',exact:true});
+ await picker.click();
+ await expect(page.getByRole('listbox')).toBeVisible();
+ await expect(page.getByRole('option',{name:'Mbps',exact:true})).toHaveAttribute('aria-selected','true');
+ await page.getByRole('option',{name:'MB/s',exact:true}).click();
+ await expect(picker).toHaveText('MB/s');
+ await expect(page.locator('[data-testid=download-value]').first()).toContainText('19,35');
+ await expect(page.getByRole('listbox')).not.toBeVisible();
+ await expect(picker).toBeFocused();
+ await picker.click();
+ await page.screenshot({path:'../.ui-snapshots/2026-11-10-dropdown/after-open.png',animations:'disabled'});
+});
+test('keyboard navigation supports cancel, Home/End, selection and Tab',async({page})=>{
+ const picker=page.getByRole('combobox',{name:'Hiển thị',exact:true});
+ await picker.focus();await picker.press('ArrowDown');
+ await expect(page.getByRole('listbox')).toBeVisible();
+ await picker.press('End');await picker.press('Escape');
+ await expect(picker).toHaveText('Mbps');
+ await picker.press('Enter');await picker.press('End');await picker.press('Enter');
+ await expect(picker).toHaveText('Gbps');
+ await picker.press('Enter');await picker.press('Home');await picker.press('Enter');
+ await expect(picker).toHaveText('Mbps');
+ await picker.press('Enter');await picker.press('Tab');
+ await expect(page.getByRole('listbox')).not.toBeVisible();
+ await expect(page.getByRole('button',{name:'Tiêu chí đánh giá mạng'})).toBeFocused();
+});
+test('picker stays in compact viewport, dismisses outside and disables during jobs',async({page})=>{
+ await page.setViewportSize({width:960,height:680});
+ const picker=page.getByRole('combobox',{name:'Hiển thị',exact:true});
+ await picker.click();
+ const box=await page.getByRole('listbox').boundingBox();
+ expect(box).not.toBeNull();expect(box!.x).toBeGreaterThanOrEqual(8);expect(box!.y+box!.height).toBeLessThanOrEqual(680);
+ await page.getByRole('heading',{name:'Kết quả đo',exact:true}).click();
+ await expect(page.getByRole('listbox')).not.toBeVisible();
+ await page.getByRole('button',{name:'Đo tốc độ',exact:true}).click();
+ await expect(page.getByRole('combobox',{name:'Adapter đo mạng'})).toBeDisabled();
+});
+test('settings picker opens above the lower edge and keeps units consistent across pages',async({page})=>{
+ await page.setViewportSize({width:960,height:680});
+ await page.getByRole('button',{name:'Cài đặt',exact:true}).click();
+ const picker=page.getByRole('combobox',{name:'Đơn vị mặc định',exact:true});
+ await picker.scrollIntoViewIfNeeded();await picker.click();
+ const trigger=await picker.boundingBox(),menu=await page.getByRole('listbox').boundingBox();
+ expect(menu!.y).toBeGreaterThanOrEqual(8);expect(menu!.y+menu!.height).toBeLessThanOrEqual(680);
+ expect(menu!.y).toBeLessThan(trigger!.y);
+ await picker.press('k');await picker.press('Enter');
+ await expect(picker).toHaveText('Kbps');
+ await page.getByRole('button',{name:'Đo mạng',exact:true}).click();
+ await expect(page.getByRole('combobox',{name:'Hiển thị',exact:true})).toHaveText('Kbps');
+});
+test('scrolling the page closes the floating list and updates its accessible state',async({page})=>{
+ const picker=page.getByRole('combobox',{name:'Hiển thị',exact:true});
+ await picker.click();await expect(picker).toHaveAttribute('aria-expanded','true');
+ await page.locator('main').dispatchEvent('scroll');
+ await expect(page.getByRole('listbox')).not.toBeVisible();
+ await expect(picker).toHaveAttribute('aria-expanded','false');
+});

@@ -1,0 +1,14 @@
+/target/
+/dist/
+*.pdb
+/.build-tools/
+/.qa/
+/.ui-snapshots/
+*.key
+*.key.pub
+*.pem
+*.p12
+*.pfx
+.env
+.env.*
+!.env.example
