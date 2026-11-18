@@ -138,6 +138,7 @@ export class App implements OnInit,OnDestroy{
  restoreOptions(role:'lan'|'usb'){const preview=this.restorePreview();return preview?restoreAdapterOptions(this.state()?.adapters??[],role==='lan'?preview.backup.config.lan_id:preview.backup.config.usb_id,role==='lan'?this.restoreLan():this.restoreUsb()):[];}
  restoreMessages(){const preview=this.restorePreview();return preview?restoreWarnings(remapBackup(preview.backup,this.restoreLan(),this.restoreUsb(),this.restoreBundledAdb()),this.state()?.adapters??[]):[];}
  editRule(index:number){this.ruleEdit=index;this.rulePattern=this.draft.rules[index].pattern;this.ruleRoute=this.draft.rules[index].route;this.ruleError='';}
+ cancelRuleEdit(){this.ruleEdit=-1;this.rulePattern='';this.ruleError='';document.getElementById('rule-pattern')?.focus();}
  addRule(){
   const pattern=this.rulePattern.trim().toLowerCase();
   if(!pattern||/\s/.test(pattern)){this.ruleError='Nhập domain, IPv4 hoặc CIDR hợp lệ, không có khoảng trắng.';return;}
