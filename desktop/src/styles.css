@@ -61,6 +61,7 @@ nb-select{display:inline-block;min-width:0;max-width:100%}
 .select-option[aria-selected=true].highlighted{background:#e3edff}.select-check{visibility:hidden;color:#2563eb}.select-check.visible{visibility:visible}
 .select-empty{padding:12px;color:#68778e}
 .selection-card nb-select,.rule-editor nb-select{display:block;width:100%}
+.rule-editor-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px}.rule-editor-actions>.button{flex-shrink:0}@media(max-width:800px){.rule-editor-actions{grid-column:1/-1}}
 .measure-controls nb-select{flex:1}.unit-controls nb-select{width:112px}
 .unit-controls .select-trigger{height:37px;font-size:13px}
 .settings-line nb-select{min-width:112px}
