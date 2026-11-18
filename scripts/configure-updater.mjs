@@ -1,0 +1,10 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+const repository=process.argv[2]||process.env.GITHUB_REPOSITORY;
+if(!repository||!/^[\w.-]+\/[\w.-]+$/.test(repository))throw new Error('Provide owner/repository or GITHUB_REPOSITORY');
+const file=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../desktop/src-tauri/tauri.conf.json');
+const config=JSON.parse(fs.readFileSync(file,'utf8'));
+config.plugins.updater.endpoints=[`https://github.com/${repository}/releases/latest/download/latest.json`];
+fs.writeFileSync(file,JSON.stringify(config,null,2)+'\n','utf8');
+console.log('Updater endpoint configured for '+repository);

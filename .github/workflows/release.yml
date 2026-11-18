@@ -1,0 +1,134 @@
+name: Windows signed release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      baseline_version:
+        description: 'Older stable version to install before upgrading (no v prefix)'
+        required: true
+        default: '0.5.0'
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/desktop/src-tauri/target
+      RUSTFLAGS: -C target-feature=+crt-static
+      BASELINE_VERSION: ${{ inputs.baseline_version || '0.5.0' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
+        with:
+          toolchain: 1.95.0
+          targets: x86_64-pc-windows-msvc
+          components: clippy
+      - name: Restore Rust dependency cache
+        id: rust-cache
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: windows-x64-msvc
+          workspaces: desktop/src-tauri -> target
+          cache-workspace-crates: false
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: npm ci
+        working-directory: desktop
+      - name: Validate version and configure release endpoint
+        run: |
+          node scripts/release-context.mjs
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node --test scripts/release.test.mjs scripts/release-context.test.mjs
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node scripts/configure-updater.mjs
+          exit $LASTEXITCODE
+      - run: npm run build
+        working-directory: desktop
+      - name: Verify Rust before signing
+        shell: pwsh
+        run: |
+          cargo test --locked --manifest-path Cargo.toml --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cargo test --locked --manifest-path desktop/src-tauri/Cargo.toml --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cargo clippy --locked --manifest-path desktop/src-tauri/Cargo.toml --target x86_64-pc-windows-msvc --all-targets -- -D warnings
+          exit $LASTEXITCODE
+      - run: npx playwright install chromium
+        working-directory: desktop
+      - name: Verify UI and production CSP
+        working-directory: desktop
+        shell: pwsh
+        run: |
+          npm run test:e2e -- --grep-invert "capture design states"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          npm run test:production
+          exit $LASTEXITCODE
+      - name: Build signed NSIS installer with offline WebView2
+        working-directory: desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        shell: pwsh
+        run: |
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) { throw 'Missing TAURI_SIGNING_PRIVATE_KEY repository secret' }
+          npm run tauri -- build --target x86_64-pc-windows-msvc --bundles nsis
+          exit $LASTEXITCODE
+      - name: Prepare update manifest and checksums
+        shell: pwsh
+        run: |
+          python scripts/collect-licenses.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node scripts/release-manifest.mjs
+          exit $LASTEXITCODE
+      - name: Windows install and upgrade smoke test
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $version = node scripts/version.mjs --check
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          ./scripts/windows-install-smoke.ps1 -Installer "dist/github-release/NetBridge_${version}_x64-setup.exe" -Version $version -BaselineVersion $env:BASELINE_VERSION
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: windows-install-smoke
+          path: .qa/windows-install-smoke/result.json
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: signed-windows-release
+          path: dist/github-release/*
+          if-no-files-found: error
+  publish:
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: signed-windows-release
+          path: release
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          args=()
+          if [[ "$RELEASE_TAG" == *-* ]]; then args+=(--prerelease); fi
+          gh release create "$RELEASE_TAG" release/* --verify-tag --title "NetBridge $RELEASE_TAG" --generate-notes "${args[@]}"
