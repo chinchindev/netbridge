@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory=$true)][string]$Installer,
     [Parameter(Mandatory=$true)][string]$Version,
-    [ValidatePattern('^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$')][string]$BaselineVersion='0.5.0'
+    [ValidatePattern('^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$')][string]$BaselineVersion='0.6.0'
 )
 $ErrorActionPreference='Stop'
 $OutputEncoding=[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)

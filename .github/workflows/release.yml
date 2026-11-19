@@ -7,7 +7,7 @@ on:
       baseline_version:
         description: 'Older stable version to install before upgrading (no v prefix)'
         required: true
-        default: '0.5.0'
+        default: '0.6.0'
         type: string
 permissions:
   contents: read
@@ -21,7 +21,7 @@ jobs:
     env:
       CARGO_TARGET_DIR: ${{ github.workspace }}/desktop/src-tauri/target
       RUSTFLAGS: -C target-feature=+crt-static
-      BASELINE_VERSION: ${{ inputs.baseline_version || '0.5.0' }}
+      BASELINE_VERSION: ${{ inputs.baseline_version || '0.6.0' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

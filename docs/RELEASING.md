@@ -64,7 +64,7 @@ The cache excludes workspace crates by default and does not contain user profile
 Run the existing signed release workflow manually on a branch:
 
 ```powershell
-gh workflow run release.yml --ref main -f baseline_version=0.5.0
+gh workflow run release.yml --ref main -f baseline_version=0.6.0
 ```
 
 This builds and signs the current application version, installs the selected baseline
@@ -74,7 +74,7 @@ execute the publish job. The generated `latest.json` contains the candidate's fu
 tag URL; it is not a live update endpoint until that release is actually published.
 
 The baseline must be an older stable version without a `v` prefix. The default is
-0.5.0; update it as the supported upgrade baseline advances. Manual runs on tag refs
+0.6.0; update it as the supported upgrade baseline advances. Manual runs on tag refs
 are rejected. Tag-push releases continue to require an exact tag/version match.
 
 ## Updating clients
@@ -93,7 +93,7 @@ Do not perform destructive lifecycle checks on a user's active network session.
 
 The signed-release workflow runs `scripts/windows-install-smoke.ps1` on its isolated
 Windows runner before publishing or when manually verifying. It installs the selected
-baseline (default 0.5.0), upgrades to the candidate,
+baseline (default 0.6.0), upgrades to the candidate,
 checks file versions/settings preservation, opens/closes native windows and checks that
 corrupt config still allows a native window to open without changing the Windows proxy. The script
 refuses execution outside GitHub Actions. Its JSON result is uploaded as an artifact.
