@@ -45,6 +45,10 @@ pub fn command(adb: &str, args: &[&str]) -> io::Result<String> {
     )
 }
 pub fn command_exact(adb: &str, args: &[&str]) -> io::Result<String> {
+    let output = command_output(adb, args)?;
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+fn command_output(adb: &str, args: &[&str]) -> io::Result<std::process::Output> {
     let mut command = Command::new(adb);
     command
         .args(args)
@@ -74,7 +78,7 @@ pub fn command_exact(adb: &str, args: &[&str]) -> io::Result<String> {
             String::from_utf8_lossy(&output.stderr).trim().to_owned(),
         ));
     }
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    Ok(output)
 }
 pub fn list(adb: &str) -> io::Result<Vec<Device>> {
     Ok(parse_devices(&command(adb, &["devices", "-l"])?))
@@ -117,24 +121,67 @@ pub fn can_restore_usb_functions(previous: &str) -> bool {
             )
         })
 }
+fn usb_configuration_args<'a>(
+    stdout: &str,
+    stderr: &str,
+    functions: Option<&'a str>,
+    unlock_data: bool,
+) -> io::Result<Vec<&'a str>> {
+    let supports = |name| {
+        stdout
+            .split_whitespace()
+            .chain(stderr.split_whitespace())
+            .any(|word| word == name)
+    };
+    let command = if supports("setFunctions") {
+        "setFunctions"
+    } else if supports("setFunction") {
+        "setFunction"
+    } else {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "Thiết bị không hỗ trợ lệnh USB cần dùng qua ADB. Bật Chia sẻ kết nối USB trên điện thoại.",
+        ));
+    };
+    let mut args = vec!["shell", "svc", "usb", command];
+    if let Some(functions) = functions {
+        args.push(functions);
+        if command == "setFunction" {
+            args.push(if unlock_data { "true" } else { "false" });
+        }
+    }
+    Ok(args)
+}
+fn set_usb_functions(
+    adb: &str,
+    serial: &str,
+    functions: Option<&str>,
+    unlock_data: bool,
+) -> io::Result<String> {
+    let path = crate::adb_manager::resolve(adb)?;
+    let path = path
+        .to_str()
+        .ok_or_else(|| io::Error::other("Invalid ADB path"))?;
+    // Android 8 and earlier print singular setFunction usage to stderr with exit code 0.
+    let help = command_output(path, &["-s", serial, "shell", "svc", "usb"])?;
+    let selected = usb_configuration_args(
+        &String::from_utf8_lossy(&help.stdout),
+        &String::from_utf8_lossy(&help.stderr),
+        functions,
+        unlock_data,
+    )?;
+    let mut args = vec!["-s", serial];
+    args.extend(selected);
+    command_exact(path, &args)
+}
 pub fn restore_usb_functions(adb: &str, serial: &str, previous: &str) -> io::Result<()> {
     if !can_restore_usb_functions(previous) {
         return Err(io::Error::other(
             "USB mode could not be restored automatically",
         ));
     }
-    let _ = command(
-        adb,
-        &[
-            "-s",
-            serial,
-            "shell",
-            "svc",
-            "usb",
-            "setFunctions",
-            previous,
-        ],
-    );
+    // Restore the function without granting legacy MTP/PTP data access during rollback.
+    let _ = set_usb_functions(adb, serial, Some(previous), false);
     let mut expected: Vec<_> = previous.split(',').collect();
     expected.sort_unstable();
     for _ in 0..8 {
@@ -159,12 +206,8 @@ pub fn set_tether(adb: &str, serial: &str, connect: bool) -> io::Result<String> 
             "Select an authorized USB device, not a TCP/emulator connection",
         ));
     }
-    let mut args = vec!["-s", serial, "shell", "svc", "usb", "setFunctions"];
-    if connect {
-        args.push("rndis");
-    }
     // Re-enumeration can interrupt ADB before the command acknowledges. Verify actual state below.
-    let command_result = command(adb, &args);
+    let command_result = set_usb_functions(adb, serial, connect.then_some("rndis"), connect);
     for _ in 0..8 {
         thread::sleep(Duration::from_millis(500));
         if let Ok(state) = command(adb, &["-s", serial, "shell", "getprop", "sys.usb.state"]) {
@@ -198,6 +241,50 @@ pub fn set_tether(adb: &str, serial: &str, connect: bool) -> io::Result<String> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    const LEGACY_HELP: &str = "Control Usb state\nusage: svc usb setFunction [function] [usbDataUnlocked=false]\nsvc usb getFunction\n";
+    const MODERN_HELP: &str = "usage: svc usb setFunctions [function]\nsvc usb setScreenUnlockedFunctions [function]\nsvc usb getFunctions\n";
+    #[test]
+    fn legacy_usb_help_on_stderr_selects_singular_command_and_unlocks_data() {
+        assert_eq!(
+            usb_configuration_args("", LEGACY_HELP, Some("rndis"), true).unwrap(),
+            vec!["shell", "svc", "usb", "setFunction", "rndis", "true"]
+        );
+    }
+    #[test]
+    fn modern_usb_help_keeps_plural_command_without_legacy_boolean() {
+        assert_eq!(
+            usb_configuration_args(MODERN_HELP, "", Some("rndis"), true).unwrap(),
+            vec!["shell", "svc", "usb", "setFunctions", "rndis"]
+        );
+    }
+    #[test]
+    fn usb_disconnect_and_restore_use_the_selected_command() {
+        for (help, command) in [(LEGACY_HELP, "setFunction"), (MODERN_HELP, "setFunctions")] {
+            assert_eq!(
+                usb_configuration_args("", help, None, false).unwrap(),
+                vec!["shell", "svc", "usb", command]
+            );
+            let mut expected = vec!["shell", "svc", "usb", command, "mtp,adb"];
+            if command == "setFunction" {
+                expected.push("false");
+            }
+            assert_eq!(
+                usb_configuration_args("", help, Some("mtp,adb"), false).unwrap(),
+                expected
+            );
+        }
+    }
+    #[test]
+    fn unknown_usb_help_does_not_guess_a_mutating_command() {
+        for help in [
+            "",
+            "error: device unauthorized",
+            "svc usb getFunctions",
+            "svc usb setScreenUnlockedFunctions",
+        ] {
+            assert!(usb_configuration_args(help, "", Some("rndis"), true).is_err());
+        }
+    }
     #[test]
     fn distinguishes_usb_network_and_unauthorized_devices() {
         let d=parse_devices("List of devices attached\nDEMO-USB-001 device product:Android_USB model:Android_USB transport_id:1\n192.0.2.117:5555 device model:AndroidDevice\nABC unauthorized\n");

@@ -9,6 +9,8 @@ Dùng bộ cài NSIS từ [GitHub Releases](https://github.com/chinchindev/netbr
 EXE rời cần Microsoft Edge WebView2 Runtime có sẵn. Bộ cài phát hành chứa runtime offline.
 
 - Chọn adapter LAN/USB, kiểm tra quy tắc rồi bật phân luồng.
+- Với điện thoại Android, bật chia sẻ kết nối USB khi cần Internet và chọn lại
+  adapter nếu đổi thiết bị. Xem [hướng dẫn USB và Android cũ](docs/USB.md).
 - Có thể chọn **Kết nối USB & phân luồng** để chờ adapter nhận IPv4 và bật proxy
   theo cấu hình đã lưu. Bản nháp phải được lưu trước. Nếu chưa chọn card USB,
   chỉ tự nhận khi có đúng một adapter RNDIS phù hợp; nhiều adapter cần chọn rõ.
