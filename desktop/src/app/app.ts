@@ -1,12 +1,13 @@
 import {Component,computed,inject,signal,OnInit,OnDestroy,HostListener} from '@angular/core';
 import {CommonModule} from '@angular/common';
 import {FormsModule} from '@angular/forms';
+import {NetworkMonitor} from './network-monitor';
 import {Gateway} from './gateway';
 import {Icon} from './icon';
 import {Select,SelectOption} from './select';
 import {remapBackup,restoreAdapterOptions,restoreWarnings} from './restore-mapping';
 import {DiagnosticDetails,Adapter,AppUpdate,Config,Device,ImportPreview,Page,Route,Snapshot,Unit,convert} from './model';
-@Component({selector:'app-root',standalone:true,imports:[CommonModule,FormsModule,Icon,Select],templateUrl:'./app.html'})
+@Component({selector:'app-root',standalone:true,imports:[CommonModule,FormsModule,Icon,Select,NetworkMonitor],templateUrl:'./app.html'})
 export class App implements OnInit,OnDestroy{
  readonly api=inject(Gateway);
  readonly state=signal<Snapshot|null>(null);
@@ -107,6 +108,7 @@ export class App implements OnInit,OnDestroy{
   {id:'connections',label:'Kết nối',icon:'network',caption:'Chuẩn bị các đường mạng của bạn.'},
   {id:'rules',label:'Quy tắc',icon:'rules',caption:'Chủ động chọn đường đi cho từng đích.'},
   {id:'speed',label:'Đo mạng',icon:'gauge',caption:'Hiểu hiệu năng của từng đường truyền.'},
+  {id:'monitor',label:'Giám sát mạng',icon:'pulse',caption:'Lưu lượng và kết nối TCP trên máy Windows.'},
   {id:'settings',label:'Cài đặt',icon:'settings',caption:'Công cụ luôn sẵn sàng khi bạn cần.'}];
  readonly targetDefinitions=computed(()=>this.state()?.config.check_targets??[]);
  readonly currentPage=computed(()=>this.links.find(p=>p.id===this.page())!);

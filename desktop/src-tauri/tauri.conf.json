@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "NetBridge",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "identifier": "dev.netbridge.desktop",
   "build": {
     "frontendDist": "../dist/browser",

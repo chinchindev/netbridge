@@ -1,6 +1,6 @@
 export type Route='lan'|'usb'|'system';
 export type Unit='Mbps'|'MB/s'|'MiB/s'|'Kbps'|'Gbps';
-export type Page='overview'|'connections'|'rules'|'speed'|'settings';
+export type Page='overview'|'connections'|'rules'|'speed'|'monitor'|'settings';
 export interface AppUpdate{status:string;version:string|null;notes:string|null;downloaded:number;total:number|null;error:string|null}
 export interface Rule{pattern:string;route:Route}
 export interface CheckTarget{name:string;host:string;port:number}

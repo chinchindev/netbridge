@@ -3,6 +3,7 @@ import {Component,input} from '@angular/core';
 export class Icon{
  name=input('grid');
  paths(){return ({
+ pulse:['M2 12h5l3-8 4 16 3-8h5'],
  grid:['M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z'],
  network:['M4 16h5v5H4zM15 16h5v5h-5zM9 3h6v5H9zM12 8v4M6.5 16v-4h11v4'],
  rules:['M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01'],

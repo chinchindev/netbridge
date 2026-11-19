@@ -7,6 +7,7 @@ fn main() {
             "start_routing",
             "stop_routing",
             "diagnostic_details",
+            "network_monitor",
             "valid_rule",
             "try_rule",
             "get_devices",

@@ -16,3 +16,5 @@ pub mod speed;
 pub mod speed_view;
 pub mod traffic;
 pub mod usb_identity;
+#[cfg(windows)]
+pub mod network_monitor;

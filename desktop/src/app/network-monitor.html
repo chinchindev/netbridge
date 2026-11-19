@@ -1,0 +1,29 @@
+<section class="panel">
+ <div class="panel-heading"><div><h2>Lưu lượng theo card</h2><p>{{paused()?'Đã tạm dừng':'Lấy mẫu mỗi 2 giây'}} @if(updated()){ · Mẫu gần nhất {{updated()}}}</p></div>
+ <button class="button secondary" (click)="togglePause()">{{paused()?'Tiếp tục':'Tạm dừng'}}</button></div>
+ @if(error()){<p class="monitor-message field-error" role="alert">{{error()}}</p>}
+ @for(warning of snapshot()?.warnings;track warning){<p class="monitor-message field-error" role="alert">{{warning}}</p>}
+ @if(current();as card){
+ <div class="monitor-traffic">
+  <div><label for="monitor-adapter">Card đang theo dõi</label><nb-select inputId="monitor-adapter" label="Card đang theo dõi" [options]="options()" [ngModel]="adapterId()" (ngModelChange)="adapterId.set($event)"/></div>
+  <div><small>Nhận / giây</small><strong class="monitor-in">{{bytes(rate()?.down)}}</strong><small>Tổng nhận {{bytes(card.sample.received)}}</small></div>
+  <div><small>Gửi / giây</small><strong class="monitor-out">{{bytes(rate()?.up)}}</strong><small>Tổng gửi {{bytes(card.sample.sent)}}</small></div>
+ </div>
+ @if(card.points.length>1){
+ <div class="monitor-chart"><svg viewBox="0 0 300 64" preserveAspectRatio="none" role="img" aria-label="Biểu đồ lưu lượng nhận và gửi theo thời gian">
+ <path d="M0 60H300 M0 32H300" class="monitor-grid"/>
+ <polyline [attr.points]="lines().down" class="monitor-in"/><polyline [attr.points]="lines().up" class="monitor-out"/></svg>
+ <small>{{card.points.length}} mẫu · Đỉnh {{bytes(lines().peak)}}/giây</small></div>
+ }@else{<p class="monitor-message muted">Đang thu thập mẫu để vẽ biểu đồ.</p>}
+ }@else{<p class="monitor-message muted">{{snapshot()?'Chưa có card mạng đang hoạt động.':'Đang đọc bộ đếm của Windows…'}}</p>}
+</section>
+<section class="panel">
+ <div class="panel-heading"><div><h2>TCP trên toàn máy</h2><p>IPv4 và IPv6 · {{rows().length}} dòng phù hợp</p></div></div>
+ <div class="monitor-tools"><button class="button secondary" [attr.aria-pressed]="!listeners()" (click)="setTab(false)">Kết nối TCP</button>
+ <button class="button secondary" [attr.aria-pressed]="listeners()" (click)="setTab(true)">Cổng lắng nghe</button>
+ <input aria-label="Lọc kết nối TCP" placeholder="Tên ứng dụng, PID, IP, cổng…" [ngModel]="filter()" (ngModelChange)="setFilter($event)"></div>
+ <div class="monitor-table"><table><thead><tr><th>Tiến trình</th><th>Địa chỉ cục bộ</th>@if(!listeners()){<th>Địa chỉ từ xa</th>}<th>Trạng thái</th></tr></thead>
+ <tbody>@for(row of rows().slice(0,limit());track $index){<tr><td>{{row.process || 'Chưa rõ tên'}}<small>PID {{row.pid}}</small></td><td>{{row.local}}</td>@if(!listeners()){<td>{{row.remote}}</td>}<td>{{row.state}}</td></tr>}</tbody></table></div>
+ @if(!rows().length){<p class="monitor-message muted">{{snapshot()?'Không có dòng phù hợp.':'Đang đọc bảng TCP…'}}</p>}
+ @if(rows().length>limit()){<button class="button secondary monitor-more" (click)="limit.set(limit()+50)">Xem thêm 50 dòng</button>}
+</section>

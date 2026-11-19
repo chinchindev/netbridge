@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod commands;
+mod monitor;
 mod connection;
 mod service;
 mod settings;
@@ -59,6 +60,7 @@ fn main() {
             commands::start_routing,
             commands::stop_routing,
             settings::diagnostic_details,
+            monitor::network_monitor,
             commands::valid_rule,
             commands::try_rule,
             commands::get_devices,

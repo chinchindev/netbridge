@@ -24,6 +24,12 @@ export class Gateway {
   if(this.native){const {invoke}=await import('@tauri-apps/api/core');return invoke<T>(command,args);}
   const d=this.demo;
   switch(command){
+   case 'network_monitor':{
+    const tick=Math.floor(performance.now());
+    return {interfaces:d.adapters.map((a,i)=>({id:a.id,name:a.name,received:String(tick*(i+1)*32),sent:String(tick*(i+1)*8)})),
+     endpoints:[{pid:120,process:'example.exe',local:'192.0.2.10:51000',remote:'198.51.100.20:443',state:'ESTABLISHED'},
+      {pid:420,process:'netbridge.exe',local:'127.0.0.1:17890',remote:null,state:'LISTEN'}],warnings:[]} as T;
+   }
    case 'get_snapshot':return clone(d) as T;
    case 'recover_config':if(args['expectedRevision']!==d.configRevision||!d.recoveryAvailable)throw new Error('Chưa thể phục hồi cấu hình.');d.configError=null;d.recoveryAvailable=false;d.configRevision='recovered';break;
    case 'export_settings':{
