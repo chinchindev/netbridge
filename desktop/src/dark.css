@@ -5,6 +5,9 @@
  --surface:#192331; --raised:#222f40; --canvas:#101822;
  --accent:#99bcff; --accent-bg:#213550; --good:#8adfc8; --good-bg:#193932;
  --warn:#f4d29b; --warn-bg:#3a3022; --bad:#ffb5af; --bad-bg:#40292e;
+}
+
+:root:is([data-theme="dark"],[data-palette]) {
  color:var(--ink);background:var(--canvas);
 
  :is(.sidebar,.topbar,.network-card,.panel,.drawer,.modal,.job-bar,.quick-link,.workspace-tag,.button.secondary,.select-menu,input,select,.select-trigger){

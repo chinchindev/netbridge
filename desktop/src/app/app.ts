@@ -10,22 +10,35 @@ import {DiagnosticDetails,Adapter,AppUpdate,Config,Device,ImportPreview,Page,Rou
 export class App implements OnInit,OnDestroy{
  readonly api=inject(Gateway);
  readonly state=signal<Snapshot|null>(null);
- readonly themeOptions:SelectOption[]=[{value:'system',label:'Theo Windows'},{value:'light',label:'Sáng'},{value:'dark',label:'Tối'}];
- readonly theme=signal<'system'|'light'|'dark'>('system');
+ readonly themeOptions=[
+  {value:'system',label:'Theo Windows',mode:null},
+  {value:'light',label:'Sáng',mode:'light'},
+  {value:'dark',label:'Tối',mode:'dark'},
+  {value:'cherry',label:'Anh đào · Sáng',mode:'light'},
+  {value:'meadow',label:'Cúc họa mi · Sáng',mode:'light'},
+  {value:'fern',label:'Dương xỉ · Tối',mode:'dark'},
+  {value:'orchid',label:'Phong lan · Tối',mode:'dark'}
+ ] satisfies (SelectOption & {mode:'light'|'dark'|null})[];
+ readonly theme=signal('system');
  private readonly systemTheme=window.matchMedia('(prefers-color-scheme: dark)');
+ private readonly selectedTheme=computed(()=>this.themeOptions.find(option=>option.value===this.theme())??this.themeOptions[0]);
  private readonly applyColors=()=>{
-  const mode=this.theme();
-  document.documentElement.dataset['theme']=mode==='system'?(this.systemTheme.matches?'dark':'light'):mode;
+  const {value,mode}=this.selectedTheme();
+  const root=document.documentElement;
+  root.dataset['theme']=mode??(this.systemTheme.matches?'dark':'light');
+  if(mode && value!==mode)root.dataset['palette']=value;
+  else delete root.dataset['palette'];
  };
  constructor(){
   let saved:string|null=null;
   try{saved=localStorage.getItem('netbridge.theme');}catch{}
-  if(saved==='light'||saved==='dark')this.theme.set(saved);
+  if(saved && this.themeOptions.some(option=>option.value===saved))this.theme.set(saved);
   this.applyColors();
   this.systemTheme.addEventListener('change',this.applyColors);
   if(this.theme()!=='system')void this.applyTitleTheme();
  }
- changeTheme(value:'system'|'light'|'dark'){
+ changeTheme(value:string){
+  if(!this.themeOptions.some(option=>option.value===value))return;
   this.theme.set(value);this.applyColors();
   try{localStorage.setItem('netbridge.theme',value);}catch{}
   void this.applyTitleTheme();
@@ -34,7 +47,7 @@ export class App implements OnInit,OnDestroy{
   if(!this.api.native)return;
   try{
    const {getCurrentWindow}=await import('@tauri-apps/api/window');
-   const mode=this.theme();await getCurrentWindow().setTheme(mode==='system'?null:mode);
+   await getCurrentWindow().setTheme(this.selectedTheme().mode);
   }catch(error){this.error.set(this.message(error));}
  }
  readonly page=signal<Page>('overview');

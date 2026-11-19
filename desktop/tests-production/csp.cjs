@@ -12,11 +12,11 @@ const config=JSON.parse(fs.readFileSync(path.resolve(__dirname,'../src-tauri/tau
 const csp=config.app.security.csp.replace("script-src 'self'",`script-src 'self' 'nonce-${nonce}'`).replace("style-src 'self'",`style-src 'self' 'nonce-${nonce}'`);
 const server=http.createServer((req,res)=>{
  const name=new URL(req.url,'http://localhost').pathname;
- if(name!=='/'&&!/^\/[\w.-]+$/.test(name)){res.writeHead(404).end();return;}
+ if(name!=='/'&&!/^\/(?:media\/)?[\w.-]+$/.test(name)){res.writeHead(404).end();return;}
  const file=path.join(root,name==='/'?'index.html':name.slice(1));
  if(!fs.existsSync(file)){res.writeHead(404).end();return;}
  const ext=path.extname(file);
- res.setHeader('Content-Type',({'.html':'text/html; charset=utf-8','.js':'text/javascript','.css':'text/css'})[ext]||'application/octet-stream');
+ res.setHeader('Content-Type',({'.html':'text/html; charset=utf-8','.js':'text/javascript','.css':'text/css','.png':'image/png'})[ext]||'application/octet-stream');
  res.setHeader('Content-Security-Policy',csp);
  let data=fs.readFileSync(file);
  if(ext==='.html')data=data.toString('utf8').replace(/<(style|script)(\s|>)/g,`<$1 nonce="${nonce}"$2`);
@@ -56,6 +56,22 @@ const server=http.createServer((req,res)=>{
   const stream=await exported.createReadStream();const chunks=[];for await(const chunk of stream)chunks.push(chunk);
   expect(JSON.parse(Buffer.concat(chunks).toString('utf8')).format).toBe('netbridge-settings');
   report.checks.push('settings export with production CSP');
+  const presets=[['cherry','Anh đào · Sáng'],['meadow','Cúc họa mi · Sáng'],['fern','Dương xỉ · Tối'],['orchid','Phong lan · Tối']];
+  for(const [id,label] of presets){
+   await page.getByRole('button',{name:'Cài đặt',exact:true}).click();
+   await page.getByRole('combobox',{name:'Giao diện'}).click();
+   await page.getByRole('option',{name:label,exact:true}).click();
+   await page.reload();
+   await expect(page.locator('html')).toHaveAttribute('data-palette',id);
+   const loaded=await page.locator('.page-heading').evaluate(async heading=>{
+    const url=getComputedStyle(heading).backgroundImage.match(/url\("([^"]+)"\)/)?.[1];
+    if(!url)return false;
+    const image=new Image();image.src=url;await image.decode();return image.naturalWidth>0;
+   });
+   expect(loaded).toBeTruthy();
+   await page.screenshot({path:path.join(output,id+'.png')});
+  }
+  report.checks.push('four botanical palettes persist and load their bundled artwork with production CSP');
   report.violations=await page.evaluate(()=>window.qaViolations);
   expect(report.violations).toHaveLength(0);expect(report.errors).toHaveLength(0);
   report.passed=true;
