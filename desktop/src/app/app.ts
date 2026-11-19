@@ -5,15 +5,79 @@ import {Gateway} from './gateway';
 import {Icon} from './icon';
 import {Select,SelectOption} from './select';
 import {remapBackup,restoreAdapterOptions,restoreWarnings} from './restore-mapping';
-import {Adapter,AppUpdate,Config,Device,ImportPreview,Page,Route,Snapshot,Unit,convert} from './model';
+import {DiagnosticDetails,Adapter,AppUpdate,Config,Device,ImportPreview,Page,Route,Snapshot,Unit,convert} from './model';
 @Component({selector:'app-root',standalone:true,imports:[CommonModule,FormsModule,Icon,Select],templateUrl:'./app.html'})
 export class App implements OnInit,OnDestroy{
  readonly api=inject(Gateway);
  readonly state=signal<Snapshot|null>(null);
+ readonly themeOptions:SelectOption[]=[{value:'system',label:'Theo Windows'},{value:'light',label:'Sáng'},{value:'dark',label:'Tối'}];
+ readonly theme=signal<'system'|'light'|'dark'>('system');
+ private readonly systemTheme=window.matchMedia('(prefers-color-scheme: dark)');
+ private readonly applyColors=()=>{
+  const mode=this.theme();
+  document.documentElement.dataset['theme']=mode==='system'?(this.systemTheme.matches?'dark':'light'):mode;
+ };
+ constructor(){
+  let saved:string|null=null;
+  try{saved=localStorage.getItem('netbridge.theme');}catch{}
+  if(saved==='light'||saved==='dark')this.theme.set(saved);
+  this.applyColors();
+  this.systemTheme.addEventListener('change',this.applyColors);
+  if(this.theme()!=='system')void this.applyTitleTheme();
+ }
+ changeTheme(value:'system'|'light'|'dark'){
+  this.theme.set(value);this.applyColors();
+  try{localStorage.setItem('netbridge.theme',value);}catch{}
+  void this.applyTitleTheme();
+ }
+ private async applyTitleTheme(){
+  if(!this.api.native)return;
+  try{
+   const {getCurrentWindow}=await import('@tauri-apps/api/window');
+   const mode=this.theme();await getCurrentWindow().setTheme(mode==='system'?null:mode);
+  }catch(error){this.error.set(this.message(error));}
+ }
  readonly page=signal<Page>('overview');
  readonly error=signal('');readonly notice=signal('');readonly busy=signal(false);readonly dirty=signal(false);
+ readonly usbConfirm=signal<Device|null>(null);
+ usbChoice='';
+ readonly usbChoices=computed(()=>{
+  const phone=this.usbConfirm(), state=this.state();
+  const candidates=state?.adapters.filter(a=>a.id!==state.config.lan_id && /rndis|remote ndis|ncm/i.test(a.description))??[];
+  if(!phone)return [];
+  const owned=candidates.filter(a=>phone.adapterIds?.includes(a.id));
+  if(owned.length)return owned;
+  return candidates.filter(a=>!this.devices().some(other=>other.serial!==phone.serial && other.adapterIds?.includes(a.id)));
+ });
+ readonly autoCard=computed(()=>{
+  const cards=this.usbChoices(),phone=this.usbConfirm();
+  return cards.length===1 && phone?.adapterIds?.includes(cards[0].id)?cards[0]:null;
+ });
+ readonly usbCardOptions=computed<SelectOption[]>(()=>this.usbChoices().map(card=>({
+  value:this.cardKey(card),label:card.name+' · '+card.ip
+ })));
  readonly devices=signal<Device[]>([]);readonly devicesLoading=signal(false);
  readonly adb=signal<{version:string;path:string}|null>(null);
+ readonly details=signal<DiagnosticDetails|null>(null);
+ readonly logTab=signal<'activity'|'connections'>('activity');
+ readonly hostFilter=signal('');
+ readonly filteredConnections=computed(()=>{
+  const query=this.hostFilter().trim().toLowerCase();
+  return this.details()?.traffic.rows.filter(row=>row.host.toLowerCase().includes(query))??[];
+ });
+ watchdogLabel(outcome:string){
+  const labels:Record<string,string>={'restored':'Đã phục hồi proxy','settings-changed':'Đã giữ thay đổi proxy của Windows','different-owner':'Phiên khác đang quản lý proxy','owner-still-live':'Chưa xác nhận phiên cũ đã thoát','inactive':'Phiên đã tắt','missing':'Không có bản sao proxy','different-listener':'Listener đã thay đổi'};
+  return labels[outcome]??outcome;
+ }
+ async copyReport(){
+  const data=this.details();if(!data)return;
+  const report={version:this.state()?.version,active:data.traffic.active,rejected:data.traffic.rejected,
+   connections:data.traffic.rows.map(row=>({stage:row.stage,route:row.route,rule:row.rule,
+    durationMs:row.elapsedMs,sent:row.sent,received:row.received,outcome:row.result===''?'active':row.result==='closed'?'closed':'interrupted'})),
+   backupCount:data.backups.count};
+  try{await navigator.clipboard.writeText(JSON.stringify(report,null,2));this.toast('Đã sao chép báo cáo ẩn danh.');}
+  catch(e){this.error.set(this.message(e));}
+ }
  readonly diagnostics=signal(false);readonly criteria=signal(false);readonly stopConfirm=signal(false);readonly exitConfirm=signal(false);
  readonly updateConfirm=signal(false);
  readonly recoveryConfirm=signal(false);
@@ -44,11 +108,12 @@ export class App implements OnInit,OnDestroy{
  private timer:ReturnType<typeof setInterval>|undefined;private unsubscribe:()=>void=()=>{};
  private refreshing=false;private toastTimer:ReturnType<typeof setTimeout>|undefined;
  async ngOnInit(){await this.refresh();this.unsubscribe=await this.api.listen(()=>{void this.refresh();},m=>this.error.set(m));this.timer=setInterval(()=>void this.refresh(),1200);}
- ngOnDestroy(){if(this.timer)clearInterval(this.timer);if(this.toastTimer)clearTimeout(this.toastTimer);this.unsubscribe();}
+ ngOnDestroy(){this.systemTheme.removeEventListener('change',this.applyColors);if(this.timer)clearInterval(this.timer);if(this.toastTimer)clearTimeout(this.toastTimer);this.unsubscribe();}
  private focusReturn:HTMLElement|null=null;
- modalOpen(){return this.criteria()||this.diagnostics()||this.stopConfirm()||this.exitConfirm()||this.updateConfirm()||this.recoveryConfirm()||!!this.restorePreview();}
+ modalOpen(){return !!this.usbConfirm()||this.criteria()||this.diagnostics()||this.stopConfirm()||this.exitConfirm()||this.updateConfirm()||this.recoveryConfirm()||!!this.restorePreview();}
  openDialog(kind:'criteria'|'diagnostics'|'stop'|'exit'|'update'|'recovery'){
   this.focusReturn=document.activeElement as HTMLElement;
+  if(kind==='diagnostics'){this.details.set(null);this.logTab.set('activity');void this.refresh();}
   this.criteria.set(kind==='criteria');this.diagnostics.set(kind==='diagnostics');this.stopConfirm.set(kind==='stop');this.exitConfirm.set(kind==='exit');
   this.updateConfirm.set(kind==='update');
   this.recoveryConfirm.set(kind==='recovery');
@@ -58,6 +123,7 @@ export class App implements OnInit,OnDestroy{
   this.criteria.set(false);this.diagnostics.set(false);this.stopConfirm.set(false);this.exitConfirm.set(false);
   this.updateConfirm.set(false);
   this.recoveryConfirm.set(false);
+  this.usbConfirm.set(null);
   this.restorePreview.set(null);
   const previous=this.focusReturn;setTimeout(()=>previous?.isConnected&&previous.focus(),0);
  }
@@ -73,6 +139,7 @@ export class App implements OnInit,OnDestroy{
   try{
    const previous=this.state();const [next,appUpdate]=await Promise.all([this.api.invoke<Snapshot>('get_snapshot'),this.api.invoke<AppUpdate>('get_app_update')]);
    this.appUpdate.set(appUpdate);
+   if(this.diagnostics())this.details.set(await this.api.invoke<DiagnosticDetails>('diagnostic_details'));
    if(!this.dirty()&&!this.busy()){this.draft=structuredClone(next.config);this.draftRevision=next.configRevision;}
    this.state.set(next);if(!previous)this.unit.set(next.unit);
    if(previous?.job.active&&!next.job.active){
@@ -110,7 +177,23 @@ export class App implements OnInit,OnDestroy{
  async loadDevices(){this.devicesLoading.set(true);try{this.devices.set(await this.api.invoke<Device[]>('get_devices'));}catch(e){this.error.set(this.message(e));}finally{this.devicesLoading.set(false);}}
  async loadAdb(){try{this.adb.set(await this.api.invoke('get_adb'));}catch(e){this.error.set(this.message(e));}}
  async tether(device:Device,connect:boolean){await this.operation('tether',{serial:device.serial,connect});}
- async connectAndRoute(device:Device){if(this.dirty())return;await this.operation('connect_usb_and_route',{serial:device.serial,expectedRevision:this.state()?.configRevision});}
+ connectAndRoute(device:Device){
+  if(this.dirty())return;
+  this.focusReturn=document.activeElement as HTMLElement;
+  this.usbConfirm.set(device);
+  this.usbChoice='';
+  setTimeout(()=>document.querySelector<HTMLElement>('[role=dialog] button')?.focus(),0);
+ }
+ cardKey(card:Adapter){return JSON.stringify([card.id,card.ip]);}
+ async confirmUsb(){
+  const device=this.usbConfirm();
+  if(!device || this.dirty())return;
+  const card=this.autoCard()??this.usbChoices().find(a=>this.cardKey(a)===this.usbChoice);
+  if((this.usbChoice||this.usbChoices().length)&&!card){this.error.set('Card USB đã thay đổi. Chọn lại card.');return;}
+  const confirmedAdapter=card?[card.id,card.ip]:null;
+  this.escape();
+  await this.operation('connect_usb_and_route',{serial:device.serial,expectedRevision:this.state()?.configRevision,confirmedAdapter,automatic:!!card && !!device.adapterIds?.includes(card.id)});
+ }
  async recoverConfig(){this.recoveryConfirm.set(false);if(await this.operation('recover_config',{expectedRevision:this.state()?.configRevision},'Đã phục hồi cấu hình. File lỗi đã được giữ riêng.'))this.discard();}
  async check(){await this.operation('check_targets');}
  addCheckTarget(){
@@ -139,10 +222,24 @@ export class App implements OnInit,OnDestroy{
  restoreMessages(){const preview=this.restorePreview();return preview?restoreWarnings(remapBackup(preview.backup,this.restoreLan(),this.restoreUsb(),this.restoreBundledAdb()),this.state()?.adapters??[]):[];}
  editRule(index:number){this.ruleEdit=index;this.rulePattern=this.draft.rules[index].pattern;this.ruleRoute=this.draft.rules[index].route;this.ruleError='';}
  cancelRuleEdit(){this.ruleEdit=-1;this.rulePattern='';this.ruleError='';document.getElementById('rule-pattern')?.focus();}
- addRule(){
+ async addRule(){
   const pattern=this.rulePattern.trim().toLowerCase();
   if(!pattern||/\s/.test(pattern)){this.ruleError='Nhập domain, IPv4 hoặc CIDR hợp lệ, không có khoảng trắng.';return;}
   if(this.draft.rules.some((rule,i)=>rule.pattern===pattern&&i!==this.ruleEdit)){this.ruleError='Đích này đã có quy tắc. Chọn dòng hiện có để sửa.';return;}
+  const editing=this.ruleEdit, raw=this.rulePattern;
+  try {
+   const valid=await this.api.invoke<boolean>('valid_rule',{pattern});
+   if(this.ruleEdit!==editing || this.rulePattern!==raw)return;
+   if(!valid){
+    let suggestion='';
+    try {
+     const url=new URL(pattern.includes('://')?pattern:'https://'+pattern);
+     if(url.hostname && /[/?#:]/.test(pattern) && !/^\d+(?:\.\d+){3}\//.test(pattern))suggestion=' Có thể nhập '+url.hostname+'.';
+    }catch{}
+    this.ruleError='Nhập hostname, wildcard hoặc IPv4/CIDR hợp lệ.'+suggestion;
+    return;
+   }
+  }catch(error){this.ruleError=this.message(error);return;}
   const rule={pattern,route:this.ruleRoute};if(this.ruleEdit>=0)this.draft.rules[this.ruleEdit]=rule;else this.draft.rules.push(rule);
   this.rulePattern='';this.ruleEdit=-1;this.ruleError='';this.changed();
  }

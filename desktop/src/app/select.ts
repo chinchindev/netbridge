@@ -23,14 +23,19 @@ export interface SelectOption{value:string;label:string}
 })
 export class Select implements ControlValueAccessor,OnChanges,OnDestroy{
  private static serial=0;
- @Input() inputId='';@Input() label='';@Input() options:SelectOption[]=[];@Input() disabled=false;
+ @Input() placeholder='Chọn một mục';@Input() inputId='';@Input() label='';@Input() options:SelectOption[]=[];@Input() disabled=false;
  @ViewChild('trigger',{static:true}) trigger!:ElementRef<HTMLButtonElement>;
  @ViewChild('menu',{static:true}) menu!:ElementRef<HTMLElement>;
  readonly listId='nb-select-'+(++Select.serial);
  value='';opened=false;active=0;left=0;top=0;width=0;maxHeight=280;
  private search='';private searchAt=0;
  private change:(value:string)=>void=()=>{};touch:()=>void=()=>{};
- private readonly dismissOnScroll=(event:Event)=>{if(this.opened&&!this.menu.nativeElement.contains(event.target as Node))this.close();};
+ private anchorTop=0;private anchorLeft=0;
+ private readonly dismissOnScroll=(event:Event)=>{
+  if(!this.opened||this.menu.nativeElement.contains(event.target as Node))return;
+  const rect=this.trigger.nativeElement.getBoundingClientRect();
+  if(rect.top!==this.anchorTop||rect.left!==this.anchorLeft)this.close();
+ };
  constructor(private readonly element:ElementRef<HTMLElement>,private readonly detector:ChangeDetectorRef){document.addEventListener('scroll',this.dismissOnScroll,true);}
  writeValue(value:string){this.value=value??'';}
  registerOnChange(fn:(value:string)=>void){this.change=fn;}
@@ -38,12 +43,13 @@ export class Select implements ControlValueAccessor,OnChanges,OnDestroy{
  setDisabledState(disabled:boolean){this.disabled=disabled;if(disabled)this.close();}
  ngOnChanges(){if(this.disabled||!this.options.length)this.close();this.active=Math.min(this.active,Math.max(0,this.options.length-1));}
  ngOnDestroy(){document.removeEventListener('scroll',this.dismissOnScroll,true);}
- selectedLabel(){return this.options.find(option=>option.value===this.value)?.label||'Chọn một mục';}
+ selectedLabel(){return this.options.find(option=>option.value===this.value)?.label||this.placeholder;}
  toggle(){if(this.opened)this.close();else this.open();}
  open(){
   if(this.disabled||!this.options.length)return;
   this.active=Math.max(0,this.options.findIndex(option=>option.value===this.value));
   const rect=this.trigger.nativeElement.getBoundingClientRect();
+  this.anchorTop=rect.top;this.anchorLeft=rect.left;
   this.width=Math.min(Math.max(rect.width,180),window.innerWidth-16);
   this.left=Math.min(Math.max(8,rect.left),window.innerWidth-this.width-8);
   const below=window.innerHeight-rect.bottom-14,above=rect.top-14;

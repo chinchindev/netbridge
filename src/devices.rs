@@ -12,6 +12,8 @@ pub struct Device {
     pub model: String,
     pub state: String,
     pub usb: bool,
+    #[serde(rename = "adapterIds")]
+    pub adapter_ids: Vec<String>,
 }
 
 pub fn parse_devices(text: &str) -> Vec<Device> {
@@ -30,6 +32,7 @@ pub fn parse_devices(text: &str) -> Vec<Device> {
                     .find_map(|s| s.strip_prefix("model:"))
                     .unwrap_or("Android")
                     .replace('_', " "),
+                adapter_ids: Vec::new(),
                 usb: !parts[0].contains(':') && !parts[0].starts_with("emulator-"),
             })
         })

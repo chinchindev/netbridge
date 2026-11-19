@@ -47,3 +47,14 @@ test('cancel editing preserves other unsaved rules and fits a compact window',as
  await expect(page.getByText('Có thay đổi chưa áp dụng')).toHaveCount(0);
  await expect(page.locator('.rule-row')).toHaveCount(5);
 });
+
+test('invalid URL suggests its hostname and leaves the saved list intact',async({page})=>{
+ const field=page.locator('#rule-pattern');
+ await field.fill('https://example.test/path?source=demo');
+ await page.getByRole('button',{name:'Thêm',exact:true}).click();
+ await expect(page.locator('.field-error')).toContainText('Có thể nhập example.test.');
+ await expect(page.locator('.rule-row')).toHaveCount(4);
+ await field.fill('203.0.113.0/24');
+ await page.getByRole('button',{name:'Thêm',exact:true}).click();
+ await expect(page.getByRole('button',{name:'203.0.113.0/24',exact:true})).toBeVisible();
+});

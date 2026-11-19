@@ -6,6 +6,8 @@ fn main() {
             "reload_config",
             "start_routing",
             "stop_routing",
+            "diagnostic_details",
+            "valid_rule",
             "try_rule",
             "get_devices",
             "get_adb",

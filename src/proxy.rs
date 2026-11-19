@@ -36,12 +36,19 @@ pub fn log(log: &Log, message: impl Into<String>) {
 }
 
 pub struct Server {
+    pub traffic: crate::traffic::Traffic,
     stop: watch::Sender<bool>,
     worker: Option<thread::JoinHandle<()>>,
     pub port: u16,
 }
 impl Server {
     pub fn start(config: SharedConfig, logs: Log) -> io::Result<Self> {
+        Self::listen(config, logs.clone(), Some(logs))
+    }
+    pub fn start_monitored(config: SharedConfig, logs: Log) -> io::Result<Self> {
+        Self::listen(config, logs, None)
+    }
+    fn listen(config: SharedConfig, logs: Log, connections: Option<Log>) -> io::Result<Self> {
         let port = config
             .read()
             .map_err(|_| io::Error::other("Configuration unavailable"))?
@@ -54,6 +61,8 @@ impl Server {
             .worker_threads(2)
             .enable_all()
             .build()?;
+        let traffic = crate::traffic::Traffic::default();
+        let monitor = traffic.clone();
         let worker = thread::spawn(move || {
             runtime.block_on(async move{
             let listener=match TcpListener::from_std(listener){Ok(v)=>v,Err(e)=>{log(&logs,format!("Listener: {e}"));return;}};
@@ -64,14 +73,15 @@ impl Server {
                     _=shutdown.changed()=>break,
                     incoming=listener.accept()=>{
                         let Ok((client,_))=incoming else{break};
-                        let Ok(permit)=limit.clone().try_acquire_owned() else{drop(client);continue};
-                        let cfg=config.clone();let logs=logs.clone();let mut cancel=shutdown.clone();
+                        let Ok(permit)=limit.clone().try_acquire_owned() else{monitor.reject();drop(client);continue};
+                        let connection_log=connections.clone();let cfg=config.clone();let trace=monitor.begin();let mut cancel=shutdown.clone();
                         tokio::spawn(async move{
                             let _permit=permit;
                             tokio::select!{
                                 _=cancel.changed()=>{},
-                                result=handle(client,cfg,logs.clone())=>{
-                                    if let Err(e)=result{log(&logs,format!("Kết nối: {}",e.kind()));}
+                                result=handle(client,cfg,&trace,connection_log.as_ref())=>{
+                                    if let (Some(logs),Err(error))=(&connection_log,&result){log(logs,format!("Kết nối: {}",error.kind()));}
+                                    trace.outcome(result.map(|_|"closed".into()).unwrap_or_else(|e|e.kind().to_string()));
                                 }
                             }
                         });
@@ -81,6 +91,7 @@ impl Server {
         })
         });
         Ok(Self {
+            traffic,
             stop,
             worker: Some(worker),
             port: actual,
@@ -99,7 +110,12 @@ impl Drop for Server {
     }
 }
 
-async fn handle(mut client: TcpStream, config: SharedConfig, logs: Log) -> io::Result<()> {
+async fn handle(
+    mut client: TcpStream,
+    config: SharedConfig,
+    trace: &crate::traffic::Trace,
+    connections: Option<&Log>,
+) -> io::Result<()> {
     let current = config
         .read()
         .map_err(|_| io::Error::other("Configuration unavailable"))?
@@ -107,30 +123,77 @@ async fn handle(mut client: TcpStream, config: SharedConfig, logs: Log) -> io::R
     let upstream = timeout(Duration::from_secs(35), async {
         let byte = client.read_u8().await?;
         if byte == 5 {
-            socks(&mut client, &current, &logs).await
+            socks(&mut client, &current, trace, connections).await
         } else {
-            http(&mut client, byte, &current, &logs).await
+            http(&mut client, byte, &current, trace, connections).await
         }
     })
     .await
     .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "Proxy handshake timed out"))??;
     let mut upstream = upstream;
-    tokio::io::copy_bidirectional(&mut client, &mut upstream).await?;
-    Ok(())
+    let mut downstream = crate::traffic::CountWrites {
+        stream: &mut client,
+        bytes: &trace.bytes.received,
+    };
+    let mut outbound = crate::traffic::CountWrites {
+        stream: &mut upstream,
+        bytes: &trace.bytes.sent,
+    };
+    trace.update(|r| r.stage = "tunnel".into());
+    tokio::io::copy_bidirectional(&mut downstream, &mut outbound)
+        .await
+        .map(|_| ())
 }
 
-async fn outbound(config: &Config, host: &str, port: u16, logs: &Log) -> io::Result<TcpStream> {
-    let path = config.select(host);
-    match dial::connect(config, host, port).await {
-        Ok((s, _)) => {
-            log(
-                logs,
-                format!("{host}:{port} → {path:?} ({})", s.local_addr()?.ip()),
-            );
-            Ok(s)
+async fn outbound(
+    config: &Config,
+    host: &str,
+    port: u16,
+    trace: &crate::traffic::Trace,
+    connections: Option<&Log>,
+) -> io::Result<TcpStream> {
+    let route = config.select(host);
+    trace.update(|r| {
+        r.host = host.to_owned();
+        r.port = port;
+        r.route = Some(route);
+        r.rule = config
+            .rules
+            .iter()
+            .position(|v| policy::matches(&v.pattern, host))
+            .map(|i| i + 1);
+        r.stage = "connect".into();
+    });
+    match dial::connect_observed(config, host, port, |stage, adapter| {
+        trace.update(|row| {
+            row.stage = stage.into();
+            if let Some(name) = adapter {
+                row.adapter = name.into();
+            }
+        });
+    })
+    .await
+    {
+        Ok((stream, _)) => {
+            if let Some(logs) = connections {
+                log(
+                    logs,
+                    format!("{host}:{port} → {route:?} ({})", stream.local_addr()?.ip()),
+                );
+            }
+            trace.update(|r| {
+                r.source = stream
+                    .local_addr()
+                    .map(|a| a.ip().to_string())
+                    .unwrap_or_default()
+            });
+            Ok(stream)
         }
         Err(e) => {
-            log(logs, format!("{host}:{port} → {path:?}: {}", e));
+            if let Some(logs) = connections {
+                log(logs, format!("{host}:{port} → {route:?}: {e}"));
+            }
+            trace.outcome(e.to_string());
             Err(e)
         }
     }
@@ -140,7 +203,8 @@ async fn http(
     client: &mut TcpStream,
     first: u8,
     config: &Config,
-    logs: &Log,
+    trace: &crate::traffic::Trace,
+    connections: Option<&Log>,
 ) -> io::Result<TcpStream> {
     let mut bytes = vec![first];
     while !bytes.ends_with(b"\r\n\r\n") {
@@ -167,7 +231,7 @@ async fn http(
         }) {
             return reject(client, 400).await;
         }
-        match outbound(config, &host, port, logs).await {
+        match outbound(config, &host, port, trace, connections).await {
             Ok(upstream) => {
                 client
                     .write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n")
@@ -186,7 +250,7 @@ async fn http(
             return reject(client, 400).await;
         }
         let port = uri.port().unwrap_or(80);
-        let mut upstream = match outbound(config, host, port, logs).await {
+        let mut upstream = match outbound(config, host, port, trace, connections).await {
             Ok(v) => v,
             Err(_) => return reject(client, 502).await,
         };
@@ -237,7 +301,12 @@ async fn reject(client: &mut TcpStream, code: u16) -> io::Result<TcpStream> {
     ))
 }
 
-async fn socks(client: &mut TcpStream, config: &Config, logs: &Log) -> io::Result<TcpStream> {
+async fn socks(
+    client: &mut TcpStream,
+    config: &Config,
+    trace: &crate::traffic::Trace,
+    connections: Option<&Log>,
+) -> io::Result<TcpStream> {
     let count = client.read_u8().await? as usize;
     let mut methods = vec![0; count];
     client.read_exact(&mut methods).await?;
@@ -272,7 +341,7 @@ async fn socks(client: &mut TcpStream, config: &Config, logs: &Log) -> io::Resul
     if port == 0 || !policy::valid_host(&host) {
         return socks_fail(client, 8).await;
     }
-    match outbound(config, &host, port, logs).await {
+    match outbound(config, &host, port, trace, connections).await {
         Ok(upstream) => {
             client.write_all(&[5, 0, 0, 1, 0, 0, 0, 0, 0, 0]).await?;
             Ok(upstream)

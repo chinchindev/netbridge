@@ -1,0 +1,45 @@
+/* Both the saved preference and Windows appearance resolve to the root theme. */
+:root[data-theme="dark"] {
+ color-scheme:dark;
+ --ink:#e3ebf7; --muted:#adbbce; --line:#344254;
+ --surface:#192331; --raised:#222f40; --canvas:#101822;
+ --accent:#99bcff; --accent-bg:#213550; --good:#8adfc8; --good-bg:#193932;
+ --warn:#f4d29b; --warn-bg:#3a3022; --bad:#ffb5af; --bad-bg:#40292e;
+ color:var(--ink);background:var(--canvas);
+
+ :is(.sidebar,.topbar,.network-card,.panel,.drawer,.modal,.job-bar,.quick-link,.workspace-tag,.button.secondary,.select-menu,input,select,.select-trigger){
+  background:var(--surface);color:var(--ink);border-color:var(--line)
+ }
+ :is(.panel-foot,.version,.rules-head,.diagnostic-summary,.assessment,.criteria-table th,.formula,.target-comparison,.restore-summary,.count-badge,.target-avatar,.sidebar-note,.bar,input:disabled,select:disabled,.select-trigger:disabled){
+  background:var(--raised);border-color:var(--line);color:var(--muted)
+ }
+ :is(.panel-heading,.settings-line,.targets-row,.target-row,.rule-row,.panel-foot,.device-row,.criteria-table td,.network-footer,.metrics>div,.advanced,.page-footer,.build-info,.diagnostic-summary,.assessment,.target-comparison,.speed-network,.device-actions,.rules-head,.metric-preview,.restore-summary,.panel,.quick-link,.about,.sidebar-note,.workspace-tag){
+  border-color:var(--line)
+ }
+ :is(.eyebrow,.brand small,.nav-caption,nav button,.diagnostic-link,.build-info,.breadcrumb,.breadcrumb strong,.session-pill,.workspace-tag,.session-copy p,.network-footer,.ip,.pill,.grade,.panel-heading p,.target-name small,.quick-link small,.quick-link>nb-icon,.page-footer,label,.selection-card p,.selection-card>small,.device-info p,.rule-order,.probe-panel p,.speed-controls p,.unit-controls label,.empty-state p,.metric-preview,.metrics>div>span,.metrics strong small,.method-note,.settings-line p,.advanced,.advanced p,.about,.job-bar small,.diagnostic-summary span,.modal p,.loading-state,.select-empty,.settings-help,.update-release p,.target-comparison small,.sidebar-note p,.icon-button,.button.ghost,.select-chevron,.target-result:not(.success):not(.failed)){
+  color:var(--muted)
+ }
+ :is(.quick-link strong,.rule-pattern,.about strong){color:var(--ink)}
+ :is(nav button:hover,.button.secondary:hover:not(:disabled),.select-trigger:hover:not(:disabled),.select-option.highlighted,.icon-button:hover:not(:disabled)){
+  background:var(--raised);color:var(--ink);border-color:#647e9f
+ }
+ :is(nav button.selected,.rule-row.editing,.network-icon,.soft-icon,.draft-bar,.route-badge,.session-emblem,.device-illustration,.empty-orbit,.proxy-address,.usb-match,.select-option[aria-selected=true],.diagnostic-body button[aria-pressed=true]){
+  background:var(--accent-bg);color:var(--accent);border-color:#405e85
+ }
+ :is(.select-option[aria-selected=true].highlighted){background:#2f496b;color:var(--accent)}
+ :is(.select-check,.select-trigger[aria-expanded=true] .select-chevron,.text-button,.session-copy .eyebrow,.diagnostic-summary code,.network-card>.eyebrow,.usb-match nb-icon,.small-symbol,.rule-pattern:hover){color:var(--accent)}
+ .session-card{background:linear-gradient(110deg,var(--accent-bg),var(--surface) 85%);border-color:#3b5575}
+ .session-card.connected{background:linear-gradient(110deg,var(--good-bg),var(--surface) 85%);border-color:#365b53}
+ :is(.teal .network-icon,.soft-icon.teal,.route-badge.teal,.version-tag,.pill.available,.grade.excellent,.grade.good,.probe-result){
+  background:var(--good-bg);color:var(--good);border-color:#365b53
+ }
+ :is(.target-result.success,.target-comparison .success,.session-pill.on,.connected .session-emblem,.network-card.teal>.eyebrow){color:var(--good)}
+ :is(.mode-banner,.alert.warning,.setup-banner,.soft-icon.amber,.grade.fair,.target-comparison>p){background:var(--warn-bg);color:var(--warn);border-color:#645238}
+ .setup-banner p{color:var(--warn)}
+ :is(.alert.error,.grade.poor,.button.danger-soft,.icon-button.delete:hover){background:var(--bad-bg);color:var(--bad);border-color:#745154}
+ :is(.field-error,.target-result.failed,.target-comparison .failed){color:var(--bad)}
+ .overlay{background:#02071099}
+ .diagnostics pre{background:#0c141f;color:#d3e0f2}
+ input::placeholder{color:#96a9c2}
+ .select-trigger:focus-visible,.select-trigger[aria-expanded=true],input:focus{border-color:var(--accent)}
+}

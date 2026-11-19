@@ -58,6 +58,8 @@ fn main() {
             commands::reload_config,
             commands::start_routing,
             commands::stop_routing,
+            settings::diagnostic_details,
+            commands::valid_rule,
             commands::try_rule,
             commands::get_devices,
             commands::get_adb,

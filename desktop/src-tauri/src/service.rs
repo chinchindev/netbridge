@@ -86,6 +86,7 @@ pub struct Session {
     pub path: PathBuf,
     pub backup: PathBuf,
     pub logs: Log,
+    pub(crate) traffic: netbridge::traffic::Traffic,
     server: Option<Server>,
     proxy_enabled: bool,
     watchdog_started: bool,
@@ -262,6 +263,7 @@ impl Session {
             config: Arc::new(RwLock::new(config)),
             path,
             backup: netbridge::config::data_dir().join("proxy-backup.json"),
+            traffic: Default::default(),
             logs: Arc::new(Mutex::new(VecDeque::new())),
             server: None,
             proxy_enabled: false,
@@ -405,8 +407,9 @@ impl Session {
                 return Err(format!("Chưa có adapter hoạt động cho {:?}.", rule.route));
             }
         }
-        let server =
-            Server::start(self.config.clone(), self.logs.clone()).map_err(|e| e.to_string())?;
+        let server = Server::start_monitored(self.config.clone(), self.logs.clone())
+            .map_err(|e| e.to_string())?;
+        self.traffic = server.traffic.clone();
         if !self.watchdog_started {
             system_proxy::spawn_watchdog(&self.backup).map_err(|e| e.to_string())?;
             self.watchdog_started = true;
@@ -452,6 +455,7 @@ impl Session {
     }
 }
 pub struct AppState {
+    logs: Log,
     pub session: Mutex<Session>,
     pub job: Mutex<Job>,
     pub targets: Mutex<Vec<TargetResult>>,
@@ -490,7 +494,12 @@ impl AppState {
         }
         let available = adapters::enumerate().map_err(|e| e.to_string())?;
         let mut config = session.usb_preflight(revision, &available)?;
-        if config.usb_id.is_empty() {
+        if !available.iter().any(|a| {
+            a.id == adapter.id && a.ip == adapter.ip && a.is_usb_network() && a.id != config.lan_id
+        }) {
+            return Err("Card USB hoặc IP nguồn vừa thay đổi. Chọn lại card.".into());
+        }
+        if config.usb_id != adapter.id {
             config.usb_id = adapter.id.clone();
             session.save(config)?;
         }
@@ -601,6 +610,7 @@ impl AppState {
     }
     pub fn new(session: Session) -> Self {
         Self {
+            logs: session.logs.clone(),
             session: Mutex::new(session),
             job: Mutex::new(Job::default()),
             targets: Mutex::new(vec![]),
@@ -639,6 +649,7 @@ impl AppState {
             cancelling: false,
             error: None,
         };
+        proxy::log(&self.logs, format!("#{id} {kind} · Bắt đầu"));
         Ok((id, cancel))
     }
     pub fn progress(&self, id: u64, phase: String) {
@@ -649,6 +660,7 @@ impl AppState {
         }
     }
     pub fn finish(&self, id: u64, result: Result<(), String>) {
+        let summary;
         if let Ok(mut job) = self.job.lock() {
             if job.id == id {
                 job.active = false;
@@ -661,8 +673,18 @@ impl AppState {
                     "Đã hoàn tất."
                 }
                 .into();
+                summary = format!(
+                    "#{id} {} · {}",
+                    job.kind,
+                    job.error.as_ref().unwrap_or(&job.phase)
+                );
+            } else {
+                return;
             }
+        } else {
+            return;
         }
+        proxy::log(&self.logs, summary);
     }
     pub fn snapshot(&self) -> Result<Snapshot, String> {
         let session = self.session.lock().map_err(|_| "Session lock")?;

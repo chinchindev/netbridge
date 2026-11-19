@@ -342,9 +342,16 @@ pub fn recover(path: &Path) -> io::Result<bool> {
     restore_guarded(path, None, false)
 }
 fn restore_guarded(path: &Path, expected: Option<Owner>, allow_own: bool) -> io::Result<bool> {
+    restore_report(path, expected, allow_own).map(|r| r == "restored")
+}
+fn restore_report(
+    path: &Path,
+    expected: Option<Owner>,
+    allow_own: bool,
+) -> io::Result<&'static str> {
     #[cfg(windows)]
     let _guard = platform::mutation_lock()?;
-    let result = restore_with(path, expected, allow_own, &WindowsProxy);
+    let result = restore_reason(path, expected, allow_own, &WindowsProxy);
     #[cfg(windows)]
     if result.is_ok() && !load(path)?.is_some_and(|backup| backup.active) {
         platform::release_session(path);
@@ -369,35 +376,43 @@ fn restore_with(
     allow_own: bool,
     env: &impl ProxyIo,
 ) -> io::Result<bool> {
+    restore_reason(path, expected, allow_own, env).map(|r| r == "restored")
+}
+fn restore_reason(
+    path: &Path,
+    expected: Option<Owner>,
+    allow_own: bool,
+    env: &impl ProxyIo,
+) -> io::Result<&'static str> {
     let Some(mut backup) = load(path)? else {
-        return Ok(false);
+        return Ok("missing");
     };
     if !backup.active {
-        return Ok(false);
+        return Ok("inactive");
     }
     let owner = Owner {
         pid: backup.owner_pid,
         created: backup.owner_created,
     };
     if expected.is_some_and(|expected| expected != owner) {
-        return Ok(false);
+        return Ok("different-owner");
     }
     let own = allow_own && owner.created.is_some() && owner == env.identity();
     if !own && env.owner_state(owner) != OwnerState::Gone {
-        return Ok(false);
+        return Ok("owner-still-live");
     }
     if env.settings()? != backup.applied {
         // A newer setting belongs to the user or another app. Preserve it and relinquish ownership.
         backup.active = false;
         save(path, &backup)?;
-        return Ok(false);
+        return Ok("settings-changed");
     }
     if env.foreign_session(&backup.applied)?
         || env
             .listener(&backup.applied)?
             .is_some_and(|pid| pid != env.identity().pid)
     {
-        return Ok(false);
+        return Ok("different-listener");
     }
     env.apply(&backup.original)?;
     if env.settings()? != backup.original {
@@ -405,7 +420,7 @@ fn restore_with(
     }
     backup.active = false;
     save(path, &backup)?;
-    Ok(true)
+    Ok("restored")
 }
 
 pub fn watchdog(parent: u32, path: &Path) -> io::Result<()> {
@@ -420,8 +435,18 @@ pub fn watchdog_for(parent: u32, path: &Path, created: Option<u64>) -> io::Resul
     #[cfg(windows)]
     platform::wait_owner(owner);
     // Check the expected identity and restore under the same cross-process lock.
-    restore_guarded(path, Some(owner), false)?;
-    Ok(())
+    let result = restore_report(path, Some(owner), false);
+    let outcome = match &result {
+        Ok(reason) => reason.to_string(),
+        Err(e) => format!("error: {}", e.kind()),
+    };
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let bytes = serde_json::to_vec(&serde_json::json!({"timestamp":timestamp,"outcome":outcome}))?;
+    crate::storage::atomic_write(&path.with_file_name("watchdog-result.json"), &bytes)?;
+    result.map(|_| ())
 }
 
 pub fn spawn_watchdog(path: &Path) -> io::Result<()> {

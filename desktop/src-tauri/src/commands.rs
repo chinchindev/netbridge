@@ -74,6 +74,10 @@ pub async fn stop_routing(state: State<'_, Arc<AppState>>) -> Result<(), String>
     .map_err(|e| e.to_string())?
 }
 #[tauri::command]
+pub fn valid_rule(pattern: String) -> bool {
+    netbridge::policy::valid_pattern(&pattern)
+}
+#[tauri::command]
 pub fn try_rule(config: Config, host: String) -> Result<serde_json::Value, String> {
     config.validate().map_err(|e| e.to_string())?;
     let host = host.trim().to_ascii_lowercase();
@@ -94,9 +98,23 @@ pub async fn get_devices(state: State<'_, Arc<AppState>>) -> Result<Vec<Device>,
         session.config().adb_path
     };
     tauri::async_runtime::spawn_blocking(move || {
-        netbridge::devices::list(&path)
-            .map(|items| items.into_iter().filter(|d| d.usb).collect())
-            .map_err(|e| e.to_string())
+        let mut phones = netbridge::devices::list(&path).map_err(|e| e.to_string())?;
+        phones.retain(|phone| phone.usb);
+        let ids = netbridge::usb_identity::read();
+        let cards = netbridge::adapters::enumerate().unwrap_or_default();
+        for phone in &mut phones {
+            phone.adapter_ids = cards
+                .iter()
+                .filter(|card| {
+                    card.is_usb_network()
+                        && ids
+                            .serial(&card.id)
+                            .is_some_and(|s| s.eq_ignore_ascii_case(&phone.serial))
+                })
+                .map(|card| card.id.clone())
+                .collect();
+        }
+        Ok(phones)
     })
     .await
     .map_err(|e| e.to_string())?

@@ -1,8 +1,8 @@
 {
  "$schema":"../gen/schemas/desktop-schema.json","identifier":"main",
  "description":"Local NetBridge UI with typed application commands","windows":["main"],
- "permissions":["core:default","allow-get-snapshot","allow-save-config","allow-reload-config","allow-start-routing","allow-stop-routing",
-  "allow-try-rule","allow-get-devices","allow-get-adb","allow-tether","allow-connect-usb-and-route","allow-adb-update",
+ "permissions":["core:default","core:window:allow-set-theme","allow-get-snapshot","allow-save-config","allow-reload-config","allow-start-routing","allow-stop-routing",
+  "allow-diagnostic-details","allow-valid-rule","allow-try-rule","allow-get-devices","allow-get-adb","allow-tether","allow-connect-usb-and-route","allow-adb-update",
   "allow-check-targets","allow-measure-network","allow-cancel-job","allow-set-unit","allow-exit-app",
   "allow-get-app-update","allow-check-app-update","allow-install-app-update",
   "allow-export-settings","allow-import-settings","allow-restore-settings","allow-recover-config"]

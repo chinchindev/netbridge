@@ -69,3 +69,17 @@ nb-select{display:inline-block;min-width:0;max-width:100%}
 .recovery-panel{display:block}.recovery-panel p{margin:6px 0}.recovery-panel small{display:block;overflow-wrap:anywhere}.recovery-panel .button-row{margin-top:14px;flex-wrap:wrap}.target-comparison{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:12px 22px 16px;background:#f8faff;border-top:1px solid #e8eef7;font-size:12px}.target-comparison>div{display:flex;flex-direction:column;gap:6px;min-width:0}.target-comparison small{color:#596b85;overflow-wrap:anywhere}.target-comparison .success{color:#167356}.target-comparison .failed{color:#ac3e38}.target-comparison>p{grid-column:1/-1;color:#77571e;background:#fff6e5;border-radius:6px;padding:9px}
 .settings-help{padding:0 24px 18px;color:#596b85;font-size:12px}.check-editor{display:grid;grid-template-columns:1fr 1.3fr 90px auto;gap:12px;align-items:end;padding:20px 24px}.check-editor input{width:100%}.restore-summary{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px 20px;padding:16px;background:#f5f8fd;border-radius:8px;margin-block:16px;font-size:13px}.restore-summary code{overflow-wrap:anywhere}@media(max-width:1100px){.check-editor{grid-template-columns:1fr 1fr}.check-editor>button{justify-self:start}}
 .update-release{padding:0 24px 24px;display:grid;gap:16px;justify-items:start}.update-release p{color:#596b85;font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}.update-message{padding:0 24px 20px;font-size:13px}.update-release progress{width:100%;height:10px;accent-color:#2563eb}
+
+.usb-card-picker{display:block;width:100%}
+.log-connection{display:grid;gap:4px;padding:10px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+.log-connection small,.log-connection span{font-size:12px}
+
+.diagnostic-body{padding:20px 24px;display:grid;gap:12px}
+.diagnostic-body p,.diagnostic-body pre{margin:0}
+.diagnostic-body>.button{justify-self:start}
+.diagnostic-body button[aria-pressed=true]{background:#eaf0ff;border-color:#9fb9ff;color:#163c91}
+
+.usb-match{display:flex;align-items:center;gap:12px;border:1px solid var(--line);background:#f0f6ff;padding:14px;border-radius:10px}
+.usb-match nb-icon{color:#3971d5}.usb-match strong,.usb-match span{display:block}
+.usb-match span{color:var(--muted);margin-top:3px;font-size:13px}
+.settings-line>label{margin:0}

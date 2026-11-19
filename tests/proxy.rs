@@ -118,6 +118,60 @@ fn connect_tunnel_preserves_bytes_and_half_close() {
     s.read_to_end(&mut out).unwrap();
     assert_eq!(out, [0, 255, 1, 2]);
     t.join().unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    let history = loop {
+        let history = proxy.traffic.snapshot();
+        if history.active == 0 {
+            break history;
+        }
+        assert!(std::time::Instant::now() < deadline);
+        thread::yield_now();
+    };
+    let row = &history.rows[0];
+    assert_eq!(
+        (row.host.as_str(), row.port, row.stage.as_str()),
+        ("127.0.0.1", port, "tunnel")
+    );
+    assert_eq!(
+        (row.sent, row.received, row.result.as_str()),
+        (4, 4, "closed")
+    );
+}
+#[test]
+fn stopping_a_live_tunnel_preserves_its_partial_counts() {
+    let (mut proxy, _) = server();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let mut client = TcpStream::connect(("127.0.0.1", proxy.port)).unwrap();
+    client
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+    write!(client, "CONNECT 127.0.0.1:{port} HTTP/1.1\r\n\r\n").unwrap();
+    let mut head = Vec::new();
+    while !head.ends_with(b"\r\n\r\n") {
+        let mut byte = [0];
+        client.read_exact(&mut byte).unwrap();
+        head.push(byte[0]);
+    }
+    let (mut upstream, _) = listener.accept().unwrap();
+    upstream
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+    client.write_all(b"abcd").unwrap();
+    let mut bytes = [0; 4];
+    upstream.read_exact(&mut bytes).unwrap();
+    upstream.write_all(&bytes).unwrap();
+    client.read_exact(&mut bytes).unwrap();
+    let live = proxy.traffic.snapshot();
+    assert_eq!(live.active, 1);
+    proxy.stop();
+    let stopped = proxy.traffic.snapshot();
+    assert_eq!(stopped.active, 0);
+    let row = &stopped.rows[0];
+    assert_eq!(
+        (row.sent, row.received, row.result.as_str()),
+        (4, 4, "session stopped")
+    );
 }
 #[test]
 fn socks5_supports_raw_tcp_clients() {

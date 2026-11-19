@@ -22,9 +22,18 @@ pub async fn connect_ip(target: SocketAddr, source: Option<Ipv4Addr>) -> io::Res
 }
 
 pub async fn connect(config: &Config, host: &str, port: u16) -> io::Result<(TcpStream, Route)> {
+    connect_observed(config, host, port, |_, _| {}).await
+}
+pub async fn connect_observed(
+    config: &Config,
+    host: &str,
+    port: u16,
+    mut observe: impl FnMut(&str, Option<&str>),
+) -> io::Result<(TcpStream, Route)> {
     let route = config.select(host);
     let (ips, source) = match route {
         Route::System => {
+            observe("DNS", None);
             let addresses = timeout(Duration::from_secs(5), lookup_host((host, port)))
                 .await
                 .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "System DNS timed out"))??;
@@ -47,6 +56,7 @@ pub async fn connect(config: &Config, host: &str, port: u16) -> io::Result<(TcpS
             } else {
                 &config.usb_id
             };
+            observe("adapter", None);
             let adapter = adapters::enumerate()?
                 .into_iter()
                 .find(|a| &a.id == id)
@@ -56,9 +66,11 @@ pub async fn connect(config: &Config, host: &str, port: u16) -> io::Result<(TcpS
                         format!("{route:?} adapter unavailable; no fallback"),
                     )
                 })?;
+            observe("DNS", Some(&adapter.name));
             (crate::dns::resolve(host, &adapter).await?, Some(adapter.ip))
         }
     };
+    observe("TCP", None);
     let mut error = io::Error::new(io::ErrorKind::NotFound, "No IPv4 address");
     for ip in ips.into_iter().take(3) {
         match connect_ip(SocketAddr::from((ip, port)), source).await {

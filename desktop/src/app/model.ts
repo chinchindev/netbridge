@@ -8,7 +8,7 @@ export interface Config{port:number;lan_id:string;usb_id:string;adb_path:string;
 export interface SettingsBackup{format:'netbridge-settings';version:1;config:Config;preferences:{unit:Unit}}
 export interface ImportPreview{backup:SettingsBackup;revision:string;warnings:string[]}
 export interface Adapter{id:string;name:string;description:string;ip:string;dns:string[];index:number;if_type:number}
-export interface Device{serial:string;model:string;state:string;usb:boolean}
+export interface Device{serial:string;model:string;state:string;usb:boolean;adapterIds?:string[]}
 export interface Probe{ok:boolean;sourceIp:string|null;predictedSourceIp:string|null;adapter:string|null;remoteIp:string|null;detail:string}
 export interface Target{name:string;host:string;port:number;route:Route;ok:boolean;detail:string;checkedAt:string;windows?:Probe;selected?:Probe}
 export interface Speed{adapter:string;sourceIp:string;downloadMbps:number|null;uploadMbps:number|null;latencyMs:number|null;grade:string;explanation:string;errors:string[]}
@@ -28,4 +28,14 @@ export const demoTargets=[
 export function convert(value:number|null,unit:Unit):number|null{
  if(value===null||!Number.isFinite(value)||value<0)return null;
  return value*({Mbps:1,'MB/s':1/8,'MiB/s':1e6/8/1048576,Kbps:1000,Gbps:0.001}[unit]);
+}
+
+export interface ConnectionRecord {
+ id:number;started:number;host:string;port:number;route:Route|null;rule:number|null;
+ adapter:string;source:string;stage:string;result:string;elapsedMs:number;sent:number;received:number;
+}
+export interface DiagnosticDetails {
+ traffic:{active:number;rejected:number;rows:ConnectionRecord[]};
+ backups:{count:number;bytes:number;latest:number|null};
+ watchdog:{timestamp:number;outcome:string}|null;
 }

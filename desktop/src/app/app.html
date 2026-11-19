@@ -90,7 +90,7 @@
        @if(appUpdate().status==='demo-installed'){<p class="update-message" role="status">Đã mô phỏng cập nhật. Không cài đặt trên máy.</p>}
       </section>
       <section class="panel settings-panel"><div class="panel-heading"><div><h2>ADB tích hợp</h2><p>Sẵn sàng dùng thiết bị Android, không cần cài SDK.</p></div><span class="version-tag">{{adb()?.version || 'Đang đọc…'}}</span></div><div class="settings-line"><div><strong>Phiên bản ổn định</strong><p>{{s.adbLatest?'Google stable: '+s.adbLatest.version:'Kiểm tra phiên bản mới từ Google khi cần.'}}</p></div><div class="button-row"><button class="button secondary" [disabled]="s.job.active||!canWrite()" (click)="updateAdb(false)">Kiểm tra bản mới</button><button class="button primary" [disabled]="s.job.active||!canWrite()||!isNewAdb()" (click)="updateAdb(true)">Cập nhật ADB</button></div></div><details class="advanced"><summary>Đường dẫn và tùy chọn nâng cao</summary><p class="path-text">{{adb()?.path}}</p><label for="adb-path">ADB đang chọn</label><input id="adb-path" [(ngModel)]="draft.adb_path" (ngModelChange)="changed()" placeholder="auto"><small>Giữ auto để dùng bản tích hợp. Chỉ nhập đường dẫn khác khi thực sự cần.</small></details></section>
-      <section class="panel settings-panel"><div class="panel-heading"><div><h2>Hành vi ứng dụng</h2><p>Rõ ràng giữa đóng cửa sổ và tắt kết nối.</p></div></div><div class="settings-line"><div><strong>Đóng cửa sổ khi đang phân luồng</strong><p>Ẩn xuống khay hệ thống, giữ kết nối tiếp tục hoạt động.</p></div><span class="pill available">Giữ phiên mạng</span></div><div class="settings-line"><div><strong>Thoát NetBridge</strong><p>Tắt phiên thuộc app và khôi phục proxy Windows trước khi thoát.</p></div><button class="button secondary" [disabled]="s.exitAllowed===false" (click)="openDialog('exit')">Thoát ứng dụng</button></div><div class="settings-line"><div><strong>Đơn vị tốc độ mặc định</strong><p>Được lưu riêng, không thay cấu hình phân luồng.</p></div><nb-select label="Đơn vị mặc định" [options]="unitOptions" [ngModel]="unit()" (ngModelChange)="changeUnit($event)"/></div></section>
+      <section class="panel settings-panel"><div class="panel-heading"><div><h2>Hành vi ứng dụng</h2><p>Rõ ràng giữa đóng cửa sổ và tắt kết nối.</p></div></div><div class="settings-line"><label for="appearance">Giao diện</label><nb-select inputId="appearance" label="Giao diện" [options]="themeOptions" [ngModel]="theme()" (ngModelChange)="changeTheme($event)"/></div><div class="settings-line"><div><strong>Đóng cửa sổ khi đang phân luồng</strong><p>Ẩn xuống khay hệ thống, giữ kết nối tiếp tục hoạt động.</p></div><span class="pill available">Giữ phiên mạng</span></div><div class="settings-line"><div><strong>Thoát NetBridge</strong><p>Tắt phiên thuộc app và khôi phục proxy Windows trước khi thoát.</p></div><button class="button secondary" [disabled]="s.exitAllowed===false" (click)="openDialog('exit')">Thoát ứng dụng</button></div><div class="settings-line"><div><strong>Đơn vị tốc độ mặc định</strong><p>Được lưu riêng, không thay cấu hình phân luồng.</p></div><nb-select label="Đơn vị mặc định" [options]="unitOptions" [ngModel]="unit()" (ngModelChange)="changeUnit($event)"/></div></section>
       <div class="about"><span class="brand-mark mini"><nb-icon name="network"/></span><div><strong>NetBridge {{s.version}}</strong><p>Tauri · Rust · Angular <span>·</span> Dữ liệu lưu trên máy tính này</p></div></div>
      }
     }
@@ -101,7 +101,46 @@
  </div>
 </div>
 @if(notice()){<div class="toast" role="status" aria-live="polite"><nb-icon name="check"/>{{notice()}}</div>}
-@if(diagnostics()){<div class="overlay" (click)="escape()"></div><aside class="diagnostics drawer" role="dialog" aria-modal="true" aria-label="Nhật ký và chẩn đoán"><div class="panel-heading"><div><div class="eyebrow">THÔNG TIN KỸ THUẬT</div><h2>Nhật ký & chẩn đoán</h2></div><button class="icon-button" aria-label="Đóng chẩn đoán" (click)="escape()"><nb-icon name="close"/></button></div><div class="diagnostic-summary"><span>Trạng thái</span><strong>{{state()?.session?.label}}</strong><span>Proxy của profile</span><code>{{state()?.session?.endpoint}}</code></div><pre>{{state()?.logs?.join('\n') || 'Chưa có nhật ký.'}}</pre><p class="muted small">Giờ UTC. Nhật ký chỉ giữ thông tin kết nối; không ghi nội dung truyền tải.</p></aside>}
+@if(usbConfirm();as phone){
+ <div class="overlay" (click)="escape()"></div>
+ <section class="modal" role="dialog" aria-modal="true" aria-label="Xác nhận đường USB">
+  <h2>Kết nối {{phone.model}}</h2>
+  @if(autoCard();as card){
+   <div class="usb-match"><nb-icon name="usb"/><div><strong>{{card.name}}</strong><span>IP nguồn · {{card.ip}}</span></div></div>
+  }@else if(usbChoices().length){
+   <label for="usb-confirm-card">Card Windows và IP nguồn của điện thoại</label>
+   <nb-select class="usb-card-picker" inputId="usb-confirm-card" label="Card Windows và IP nguồn của điện thoại"
+    [placeholder]="'Chọn card của '+phone.model" [options]="usbCardOptions()" [(ngModel)]="usbChoice"/>
+  }@else{<p>NetBridge sẽ chờ card của {{phone.model}} nhận IPv4.</p>}
+  <div class="modal-actions"><button class="button secondary" (click)="escape()">Hủy</button>
+   <button class="button primary" [disabled]="busy()||dirty()||(!autoCard()&&usbChoices().length>0&&!usbChoice)" (click)="confirmUsb()">Xác nhận kết nối</button></div>
+ </section>
+}
+@if(diagnostics()){<div class="overlay" (click)="escape()"></div><aside class="diagnostics drawer" role="dialog" aria-modal="true" aria-label="Nhật ký và chẩn đoán"><div class="panel-heading"><div><div class="eyebrow">THÔNG TIN KỸ THUẬT</div><h2>Nhật ký & chẩn đoán</h2></div><button class="icon-button" aria-label="Đóng chẩn đoán" (click)="escape()"><nb-icon name="close"/></button></div><div class="diagnostic-summary"><span>Trạng thái</span><strong>{{state()?.session?.label}}</strong><span>Proxy của profile</span><code>{{state()?.session?.endpoint}}</code></div><div class="diagnostic-body"><div class="button-row">
+ <button class="button secondary" (click)="logTab.set('activity')" [attr.aria-pressed]="logTab()==='activity'">Hoạt động</button>
+ <button class="button secondary" (click)="logTab.set('connections')" [attr.aria-pressed]="logTab()==='connections'">Kết nối</button>
+ </div>
+ @if(logTab()==='activity'){
+  @if(details();as info){
+   @if(info.watchdog;as wd){<p>Watchdog · {{wd.timestamp*1000 | date:'dd/MM HH:mm:ss':'UTC'}} · {{watchdogLabel(wd.outcome)}}</p>}
+   <p>Bản sao proxy: {{info.backups.count}} · {{info.backups.bytes | number}} byte
+    @if(info.backups.latest){ · gần nhất {{info.backups.latest*1000 | date:'dd/MM HH:mm:ss':'UTC'}}}
+   </p>
+  }
+  <pre>{{state()?.logs?.join('\n') || 'Chưa có nhật ký.'}}</pre>
+ }@else{
+  <label for="diagnostic-host">Lọc hostname</label><input id="diagnostic-host" [ngModel]="hostFilter()" (ngModelChange)="hostFilter.set($event)">
+  @if(details();as info){<p>Đang mở: {{info.traffic.active}} · Từ chối do đầy: {{info.traffic.rejected}}</p>}
+  @for(row of filteredConnections();track row.id){
+   <article class="log-connection">
+    <strong>#{{row.id}} {{row.host || 'Đang nhận yêu cầu'}} @if(row.port){· {{row.port}}}</strong>
+    <small>{{row.started*1000 | date:'HH:mm:ss':'UTC'}} UTC · {{row.stage}} · {{row.result || 'Đang mở'}}</small>
+    @if(row.route){<span>{{routeName(row.route)}} · {{row.rule?'Quy tắc #'+row.rule:'Mặc định'}} · {{row.adapter || row.source || 'Chờ kết nối'}} @if(row.adapter && row.source){ · {{row.source}}}</span>}
+    <small>{{row.elapsedMs}} ms · Gửi {{row.sent | number}} B · Nhận {{row.received | number}} B</small>
+   </article>
+  }@empty{<p>Chưa có kết nối phù hợp.</p>}
+ }
+ <button class="button secondary" [disabled]="!details()" (click)="copyReport()">Sao chép báo cáo ẩn danh</button></div><p class="muted small">Giờ UTC. Nhật ký chỉ giữ thông tin kết nối; không ghi nội dung truyền tải.</p></aside>}
 @if(criteria()||stopConfirm()||exitConfirm()||updateConfirm()||restorePreview()||recoveryConfirm()){<div class="overlay" (click)="escape()"></div><section class="modal" role="dialog" aria-modal="true" [attr.aria-label]="recoveryConfirm()?'Phục hồi cấu hình':restorePreview()?'Khôi phục setting':updateConfirm()?'Cập nhật NetBridge':criteria()?'Tiêu chí đánh giá':exitConfirm()?'Thoát NetBridge':'Tắt phân luồng'"><button class="icon-button modal-close" aria-label="Đóng hộp thoại" (click)="escape()"><nb-icon name="close"/></button>
  @if(criteria()){<span class="soft-icon"><nb-icon name="gauge"/></span><h2>Đánh giá dựa trên điều gì?</h2><p>Mức chung là mức thấp nhất của ba chỉ số. Các ngưỡng tham khảo của NetBridge:</p><table class="criteria-table"><thead><tr><th>Mức</th><th>Download</th><th>Upload</th><th>HTTP</th></tr></thead><tbody><tr><td>Rất tốt</td><td>≥100 Mbps</td><td>≥20 Mbps</td><td>≤60 ms</td></tr><tr><td>Tốt</td><td>≥25 Mbps</td><td>≥5 Mbps</td><td>≤120 ms</td></tr><tr><td>Trung bình</td><td>≥10 Mbps</td><td>≥1 Mbps</td><td>≤200 ms</td></tr><tr><td>Yếu</td><td colspan="3">Có chỉ số dưới ngưỡng Trung bình</td></tr></tbody></table><p class="small muted">Có lỗi hoặc thiếu chỉ số sẽ không được gán nhãn tốt. Không phải tiêu chuẩn của nhà mạng; không đánh giá jitter, mất gói hoặc độ ổn định dài hạn.</p><div class="formula">1 MB/s = 8 Mbps <span>·</span> 1 MiB/s ≈ 8,39 Mbps</div><button class="button primary" (click)="escape()">Đã hiểu</button>}
  @else if(recoveryConfirm()){<span class="soft-icon"><nb-icon name="shield"/></span><h2>Phục hồi cấu hình đã lưu?</h2><p>Thay file cấu hình lỗi bằng bản lưu tốt gần nhất. File lỗi sẽ được giữ riêng để kiểm tra; proxy không tự bật sau khi phục hồi.</p><div class="modal-actions"><button class="button secondary" (click)="escape()">Để nguyên cấu hình</button><button class="button primary" (click)="recoverConfig()">Xác nhận phục hồi</button></div>}

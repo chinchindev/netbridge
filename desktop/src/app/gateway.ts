@@ -12,14 +12,14 @@ export class Gateway {
    {pattern:'*.example.org',route:'usb'},{pattern:'198.51.100.20',route:'usb'}],check_targets:demoTargets.map(({name,host,port})=>({name,host,port}))},
   adapters:[
    {id:'demo-lan',name:'Ethernet',description:'LAN nội bộ',ip:'192.0.2.10',dns:['192.0.2.53'],index:1,if_type:6},
-   {id:'demo-usb',name:'Ethernet 3',description:'USB · Android_USB',ip:'198.51.100.10',dns:['198.51.100.53'],index:2,if_type:6}],
+   {id:'demo-usb',name:'Ethernet 3',description:'Remote NDIS · Android_USB',ip:'198.51.100.10',dns:['198.51.100.53'],index:2,if_type:6}],
   session:{kind:'inactive',owned:false,label:'Sẵn sàng kết nối',detail:'Bật proxy để áp dụng quy tắc cho các ứng dụng dùng proxy Windows.',endpoint:'127.0.0.1:17890'},
   job:{id:0,kind:'',phase:'',active:false,cancelling:false,error:null},
   targets:[],speeds:[],logs:['NetBridge sẵn sàng. Dữ liệu trong trình duyệt là mô phỏng.'],unit:'Mbps',adbLatest:null
  };
  private timer:ReturnType<typeof setTimeout>|undefined;
  private appUpdate:AppUpdate={status:'',version:null,notes:null,downloaded:0,total:null,error:null};
- constructor(){if(!this.native){const scenario=new URLSearchParams(location.search).get('scenario');if(scenario==='external-config'||scenario==='config-error-external-fix')this.demo.configChanged=true;if(scenario==='empty-settings'){this.demo.config.rules=[];this.demo.config.check_targets=[];}if(scenario?.startsWith('config-error')){this.demo.configError='Cấu hình JSON không hợp lệ.';this.demo.recoveryAvailable=scenario==='config-error';this.demo.configRevision='broken';}}}
+ constructor(){if(!this.native){const scenario=new URLSearchParams(location.search).get('scenario');if(scenario==='multiple-usb'||scenario==='paired-usb')this.demo.adapters.push({...this.demo.adapters[1],id:'demo-second',name:'Ethernet 4',ip:'203.0.113.10'});if(scenario==='external-config'||scenario==='config-error-external-fix')this.demo.configChanged=true;if(scenario==='empty-settings'){this.demo.config.rules=[];this.demo.config.check_targets=[];}if(scenario?.startsWith('config-error')){this.demo.configError='Cấu hình JSON không hợp lệ.';this.demo.recoveryAvailable=scenario==='config-error';this.demo.configRevision='broken';}}}
  async invoke<T>(command:string,args:Record<string,unknown>={}):Promise<T>{
   if(this.native){const {invoke}=await import('@tauri-apps/api/core');return invoke<T>(command,args);}
   const d=this.demo;
@@ -61,8 +61,22 @@ export class Gateway {
    case 'reload_config':d.configChanged=false;d.configError=null;d.recoveryAvailable=false;d.targets=[];break;
    case 'start_routing':d.session={kind:'active',owned:true,label:'Đang phân luồng',detail:'Phiên mô phỏng. Không thay đổi proxy Windows.',endpoint:d.session.endpoint};break;
    case 'stop_routing':d.session={...d.session,kind:'inactive',owned:false,label:'Đang dùng mạng Windows',detail:'Phiên mô phỏng đã tắt.'};break;
-   case 'get_devices':return [{serial:'DEMO-USB-001',model:'Android_USB',state:'device',usb:true}] as T;
+   case 'get_devices':{
+    const scenario=new URLSearchParams(location.search).get('scenario');
+    const first={serial:'DEMO-USB-001',model:'Android_USB',state:'device',usb:true,adapterIds:scenario==='multiple-usb'?[]:['demo-usb']};
+    return (scenario==='paired-usb'?[first,{...first,serial:'DEMO-USB-002',model:'Android_B',adapterIds:['demo-second']}]:[first]) as T;
+   }
    case 'get_adb':return {version:'37.0.1',path:'ADB tích hợp · dữ liệu mô phỏng',bundled:true} as T;
+   case 'diagnostic_details':return {traffic:{active:0,rejected:0,rows:[]},backups:{count:0,bytes:0,latest:null},watchdog:null} as T;
+   case 'valid_rule':{
+    const pattern=String(args['pattern']);
+    if(pattern.includes('/')){
+     const cidr=/^(\d+(?:\.\d+){3})\/\+?(\d+)$/.exec(pattern);
+     return (!!cidr && Number(cidr[2])<=32 && cidr[1].split('.').every(v=>String(Number(v))===v && Number(v)<=255)) as T;
+    }
+    const host=pattern.replace(/^\*\./,'').replace(/\.+$/,'');
+    return (host.length<=253 && host.split('.').every(label=>/^[a-z0-9_-]{1,63}$/i.test(label))) as T;
+   }
    case 'try_rule':{
     const cfg=args['config'] as Config;const host=String(args['host']).trim().toLowerCase();
     if(!host||/\s/.test(host))throw new Error('Nhập hostname hợp lệ.');
@@ -81,6 +95,8 @@ export class Gateway {
      if(command==='check_targets')d.targets=d.config.check_targets.map(t=>{const failure=new URLSearchParams(location.search).get('scenario')==='windows-route-failure';return {...t,route:d.config.rules.find(r=>r.pattern===t.host)?.route??'system',ok:true,detail:'TCP đạt · dữ liệu mô phỏng',checkedAt:String(Math.floor(Date.now()/1000)),windows:{ok:!failure,sourceIp:failure?null:'192.0.2.10',predictedSourceIp:failure?'198.51.100.10':'192.0.2.10',adapter:failure?'Ethernet 3':'Ethernet',remoteIp:'192.0.2.20',detail:failure?'TCP timed out':'TCP đạt'},selected:{ok:true,sourceIp:'192.0.2.10',predictedSourceIp:'192.0.2.10',adapter:'Ethernet',remoteIp:'192.0.2.20',detail:'TCP đạt'}};});
      if(command==='connect_usb_and_route'){
       if(new URLSearchParams(location.search).get('scenario')==='usb-connect-failure'){d.job={...d.job,active:false,error:'Không bật được phân luồng. Đã hoàn tác Ethernet USB vừa bật.',phase:'Kết nối chưa hoàn tất.'};return;}
+      const selected=args['confirmedAdapter'] as [string,string]|null;
+      if(selected && selected[0]!==d.config.usb_id){d.config.usb_id=selected[0];d.configRevision=String(Number(d.configRevision)+1);}
       d.session={kind:'active',owned:true,label:'Đang phân luồng',detail:'USB và proxy đã sẵn sàng · dữ liệu mô phỏng.',endpoint:d.session.endpoint};
      }
      if(command==='measure_network')d.speeds=d.adapters.filter(a=>args['adapterId']==='all'||args['adapterId']===a.id).map((a,i)=>({

@@ -56,7 +56,7 @@ test('settings picker opens above the lower edge and keeps units consistent acro
 test('scrolling the page closes the floating list and updates its accessible state',async({page})=>{
  const picker=page.getByRole('combobox',{name:'Hiển thị',exact:true});
  await picker.click();await expect(picker).toHaveAttribute('aria-expanded','true');
- await page.locator('main').dispatchEvent('scroll');
+ await page.locator('main').evaluate(el=>{el.scrollTop+=el.scrollTop>0?-30:30;});
  await expect(page.getByRole('listbox')).not.toBeVisible();
  await expect(picker).toHaveAttribute('aria-expanded','false');
 });

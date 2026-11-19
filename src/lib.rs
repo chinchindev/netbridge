@@ -14,3 +14,5 @@ pub mod proxy;
 pub mod system_proxy;
 pub mod speed;
 pub mod speed_view;
+pub mod traffic;
+pub mod usb_identity;

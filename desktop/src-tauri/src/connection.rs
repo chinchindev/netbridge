@@ -17,12 +17,41 @@ struct UsbConnection {
     id: u64,
     serial: String,
     revision: String,
+    confirmed_adapter: Option<(String, std::net::Ipv4Addr)>,
+    automatic: bool,
     config: Option<Config>,
     adapter: Option<Adapter>,
     original_proxy: Option<system_proxy::Settings>,
     original_usb: Option<String>,
 }
 impl UsbConnection {
+    fn verify_card(
+        &self,
+        ids: &netbridge::usb_identity::UsbIdentity,
+        adapter: &Adapter,
+    ) -> Result<(), String> {
+        let owner = ids.serial(&adapter.id);
+        if owner.is_some_and(|s| s.eq_ignore_ascii_case(&self.serial)) {
+            return Ok(());
+        }
+        if self.automatic || self.confirmed_adapter.is_none() {
+            return Err(
+                "Chưa xác minh được card của điện thoại. Làm mới thiết bị rồi chọn lại.".into(),
+            );
+        }
+        if let Some(owner) = owner {
+            if devices::list(&self.config().adb_path)
+                .map_err(|e| e.to_string())?
+                .iter()
+                .any(|d| d.usb && d.serial.eq_ignore_ascii_case(owner))
+            {
+                return Err(
+                    "Card USB đang thuộc điện thoại khác. Làm mới danh sách thiết bị.".into(),
+                );
+            }
+        }
+        Ok(())
+    }
     fn phase(&self, text: &str) {
         self.state.progress(self.id, text.into());
         let _ = self.app.emit("netbridge://state", self.id);
@@ -41,6 +70,25 @@ impl ConnectionActions for UsbConnection {
                 .map_err(|_| "Session lock")?
                 .usb_preflight(&self.revision, &available)?,
         );
+        let candidates: Vec<_> = available
+            .iter()
+            .filter(|a| a.is_usb_network() && a.id != self.config().lan_id)
+            .collect();
+        let ids = netbridge::usb_identity::read();
+        if let Some((id, ip)) = &self.confirmed_adapter {
+            let card = candidates
+                .iter()
+                .find(|a| &a.id == id && &a.ip == ip)
+                .ok_or("Card USB đã thay đổi. Chọn lại card trước khi bật.")?;
+            self.verify_card(&ids, card)?;
+            self.config
+                .as_mut()
+                .expect("profile loaded")
+                .usb_id
+                .clone_from(id);
+        } else {
+            self.config.as_mut().expect("profile loaded").usb_id.clear();
+        }
         self.original_proxy = Some(system_proxy::read().map_err(|e| e.to_string())?);
         Ok(())
     }
@@ -65,7 +113,34 @@ impl ConnectionActions for UsbConnection {
         let deadline = Instant::now() + Duration::from_secs(20);
         loop {
             if let Ok(available) = adapters::enumerate() {
-                if let Some(adapter) = connection_flow::usb_candidate(self.config(), &available)? {
+                let ids = netbridge::usb_identity::read();
+                let candidate = if self.confirmed_adapter.is_some() {
+                    connection_flow::usb_candidate(self.config(), &available)?
+                } else {
+                    let mut matches = available.iter().filter(|card| {
+                        card.is_usb_network()
+                            && card.id != self.config().lan_id
+                            && ids
+                                .serial(&card.id)
+                                .is_some_and(|s| s.eq_ignore_ascii_case(&self.serial))
+                    });
+                    let first = matches.next().cloned();
+                    if matches.next().is_some() {
+                        return Err(
+                            "Điện thoại có nhiều card USB. Làm mới rồi chọn card cần dùng.".into(),
+                        );
+                    }
+                    first
+                };
+                if let Some(adapter) = candidate {
+                    self.verify_card(&ids, &adapter)?;
+                    if self
+                        .confirmed_adapter
+                        .as_ref()
+                        .is_some_and(|(_, ip)| adapter.ip != *ip)
+                    {
+                        return Err("IP của card USB đã thay đổi. Chọn lại card.".into());
+                    }
                     self.adapter = Some(adapter);
                     return Ok(());
                 }
@@ -78,6 +153,10 @@ impl ConnectionActions for UsbConnection {
     }
     fn start_routing(&mut self) -> Result<(), String> {
         self.phase("USB đã sẵn sàng. Đang bật phân luồng…");
+        self.verify_card(
+            &netbridge::usb_identity::read(),
+            self.adapter.as_ref().ok_or("Adapter USB chưa sẵn sàng")?,
+        )?;
         self.state.start_usb_job(
             self.id,
             &self.revision,
@@ -115,6 +194,8 @@ pub fn connect_usb_and_route(
     state: State<'_, Arc<AppState>>,
     serial: String,
     expected_revision: String,
+    confirmed_adapter: Option<(String, std::net::Ipv4Addr)>,
+    automatic: Option<bool>,
 ) -> Result<u64, String> {
     let state = state.inner().clone();
     let (id, _) = state.begin_job("usb")?;
@@ -126,6 +207,8 @@ pub fn connect_usb_and_route(
             id,
             serial,
             revision: expected_revision,
+            confirmed_adapter,
+            automatic: automatic.unwrap_or(false),
             config: None,
             adapter: None,
             original_proxy: None,
