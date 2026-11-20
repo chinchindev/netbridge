@@ -1,6 +1,6 @@
 use serde::Serialize;
 use std::{
-    io,
+    io::{self, Read},
     process::{Command, Stdio},
     thread,
     time::{Duration, Instant},
@@ -63,19 +63,45 @@ fn command_output(adb: &str, args: &[&str]) -> io::Result<std::process::Output> 
         command.creation_flags(0x08000000);
     }
     let mut child = command.spawn()?;
-    let started = Instant::now();
-    loop {
-        if child.try_wait()?.is_some() {
-            break;
-        }
-        if started.elapsed() > Duration::from_secs(12) {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(io::Error::new(io::ErrorKind::TimedOut, "ADB timed out"));
-        }
-        thread::sleep(Duration::from_millis(80));
-    }
-    let output = child.wait_with_output()?;
+    // Both dumpsys and a Settings UI hierarchy can exceed the Windows pipe capacity.
+    // Drain both streams while polling the child so the timeout also covers large replies.
+    let mut stdout = child.stdout.take().expect("piped stdout");
+    let mut stderr = child.stderr.take().expect("piped stderr");
+    let output = thread::scope(|scope| -> io::Result<std::process::Output> {
+        let out = scope.spawn(move || {
+            let mut bytes = Vec::new();
+            stdout.read_to_end(&mut bytes)?;
+            Ok::<_, io::Error>(bytes)
+        });
+        let err = scope.spawn(move || {
+            let mut bytes = Vec::new();
+            stderr.read_to_end(&mut bytes)?;
+            Ok::<_, io::Error>(bytes)
+        });
+        let started = Instant::now();
+        let status = loop {
+            if let Some(status) = child.try_wait()? {
+                break status;
+            }
+            if started.elapsed() > Duration::from_secs(12) {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(io::Error::new(io::ErrorKind::TimedOut, "ADB timed out"));
+            }
+            thread::sleep(Duration::from_millis(80));
+        };
+        let stdout = out
+            .join()
+            .map_err(|_| io::Error::other("ADB stdout unavailable"))??;
+        let stderr = err
+            .join()
+            .map_err(|_| io::Error::other("ADB stderr unavailable"))??;
+        Ok(std::process::Output {
+            status,
+            stdout,
+            stderr,
+        })
+    })?;
     if !output.status.success() {
         return Err(io::Error::other(
             String::from_utf8_lossy(&output.stderr).trim().to_owned(),
@@ -86,8 +112,75 @@ fn command_output(adb: &str, args: &[&str]) -> io::Result<std::process::Output> 
 pub fn list(adb: &str) -> io::Result<Vec<Device>> {
     Ok(parse_devices(&command(adb, &["devices", "-l"])?))
 }
+#[path = "samsung_tether.rs"]
+mod samsung_tether;
+
+pub struct UsbState {
+    pub functions: String,
+    pub enabled: bool,
+    samsung: bool,
+}
+fn authorized_device(adb: &str, serial: &str) -> io::Result<Device> {
+    list(adb)?
+        .into_iter()
+        .find(|d| d.serial == serial && d.usb && d.state == "device")
+        .ok_or_else(|| io::Error::other("Select an authorized physical USB device"))
+}
+fn is_s7_oreo(adb: &str, phone: &Device) -> io::Result<bool> {
+    if !phone
+        .model
+        .replace(['_', ' '], "-")
+        .eq_ignore_ascii_case("SM-G930U")
+    {
+        return Ok(false);
+    }
+    Ok(command(
+        adb,
+        &[
+            "-s",
+            &phone.serial,
+            "shell",
+            "getprop",
+            "ro.build.version.sdk",
+        ],
+    )?
+    .trim()
+        == "26")
+}
+pub fn usb_state(adb: &str, serial: &str) -> io::Result<UsbState> {
+    let phone = authorized_device(adb, serial)?;
+    let functions = read_functions(adb, serial)?;
+    let samsung = is_s7_oreo(adb, &phone)?;
+    let enabled = if samsung {
+        samsung_tether::active(adb, serial)?
+    } else {
+        usb_network_enabled(&functions)
+    };
+    Ok(UsbState {
+        functions,
+        enabled,
+        samsung,
+    })
+}
 pub fn usb_ethernet_enabled(adb: &str, serial: &str) -> io::Result<bool> {
-    Ok(usb_network_enabled(&usb_functions(adb, serial)?))
+    Ok(usb_state(adb, serial)?.enabled)
+}
+pub fn restore_usb_state(adb: &str, serial: &str, previous: &UsbState) -> io::Result<()> {
+    if previous.samsung {
+        if samsung_tether::active(adb, serial)? != previous.enabled {
+            samsung_tether::set(adb, serial, previous.enabled)?;
+        }
+        if read_functions(adb, serial)? == previous.functions {
+            return Ok(());
+        }
+    }
+    restore_usb_functions(adb, serial, &previous.functions)?;
+    if previous.samsung && samsung_tether::active(adb, serial)? != previous.enabled {
+        return Err(io::Error::other(
+            "Chưa phục hồi được trạng thái chia sẻ mạng ban đầu của Samsung.",
+        ));
+    }
+    Ok(())
 }
 pub fn usb_network_enabled(functions: &str) -> bool {
     functions
@@ -95,12 +188,10 @@ pub fn usb_network_enabled(functions: &str) -> bool {
         .any(|part| matches!(part.trim(), "rndis" | "ncm"))
 }
 pub fn usb_functions(adb: &str, serial: &str) -> io::Result<String> {
-    if !list(adb)?
-        .iter()
-        .any(|device| device.serial == serial && device.usb && device.state == "device")
-    {
-        return Err(io::Error::other("Select an authorized physical USB device"));
-    }
+    authorized_device(adb, serial)?;
+    read_functions(adb, serial)
+}
+fn read_functions(adb: &str, serial: &str) -> io::Result<String> {
     Ok(
         command(adb, &["-s", serial, "shell", "getprop", "sys.usb.state"])?
             .trim()
@@ -200,14 +291,15 @@ pub fn restore_usb_functions(adb: &str, serial: &str, previous: &str) -> io::Res
     Err(io::Error::other("Cannot confirm the previous USB mode"))
 }
 pub fn set_tether(adb: &str, serial: &str, connect: bool) -> io::Result<String> {
-    let devices = list(adb)?;
-    if !devices
-        .iter()
-        .any(|d| d.serial == serial && d.usb && d.state == "device")
-    {
-        return Err(io::Error::other(
-            "Select an authorized USB device, not a TCP/emulator connection",
-        ));
+    let phone = authorized_device(adb, serial)?;
+    if is_s7_oreo(adb, &phone)? {
+        samsung_tether::set(adb, serial, connect)?;
+        return Ok(if connect {
+            "Samsung đã bật chia sẻ mạng qua USB."
+        } else {
+            "Samsung đã ngắt chia sẻ mạng qua USB."
+        }
+        .into());
     }
     // Re-enumeration can interrupt ADB before the command acknowledges. Verify actual state below.
     let command_result = set_usb_functions(adb, serial, connect.then_some("rndis"), connect);

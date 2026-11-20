@@ -22,7 +22,7 @@ struct UsbConnection {
     config: Option<Config>,
     adapter: Option<Adapter>,
     original_proxy: Option<system_proxy::Settings>,
-    original_usb: Option<String>,
+    original_usb: Option<devices::UsbState>,
 }
 impl UsbConnection {
     fn verify_card(
@@ -93,13 +93,13 @@ impl ConnectionActions for UsbConnection {
         Ok(())
     }
     fn usb_enabled(&mut self) -> Result<bool, String> {
-        let functions = devices::usb_functions(&self.config().adb_path, &self.serial)
-            .map_err(|e| e.to_string())?;
-        let enabled = devices::usb_network_enabled(&functions);
-        if !enabled && !devices::can_restore_usb_functions(&functions) {
+        let original =
+            devices::usb_state(&self.config().adb_path, &self.serial).map_err(|e| e.to_string())?;
+        let enabled = original.enabled;
+        if !enabled && !devices::can_restore_usb_functions(&original.functions) {
             return Err("Chưa xác định được chế độ USB có thể phục hồi. Dùng kết nối USB riêng để thiết lập thiết bị.".into());
         }
-        self.original_usb = Some(functions);
+        self.original_usb = Some(original);
         Ok(enabled)
     }
     fn enable_usb(&mut self) -> Result<(), String> {
@@ -178,11 +178,11 @@ impl ConnectionActions for UsbConnection {
     }
     fn undo_usb(&mut self) -> Result<(), String> {
         self.phase("Đang phục hồi chế độ USB trước thao tác…");
-        devices::restore_usb_functions(
+        devices::restore_usb_state(
             &self.config().adb_path,
             &self.serial,
             self.original_usb
-                .as_deref()
+                .as_ref()
                 .ok_or("Không có trạng thái USB ban đầu")?,
         )
         .map_err(|e| e.to_string())

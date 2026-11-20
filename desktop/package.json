@@ -1,6 +1,6 @@
 {
   "name": "netbridge-desktop",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "private": true,
   "scripts": {
     "start": "ng serve --host 127.0.0.1 --port 1420",
