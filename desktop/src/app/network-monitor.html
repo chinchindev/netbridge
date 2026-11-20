@@ -18,12 +18,29 @@
  }@else{<p class="monitor-message muted">{{snapshot()?'Chưa có card mạng đang hoạt động.':'Đang đọc bộ đếm của Windows…'}}</p>}
 </section>
 <section class="panel">
+ <div class="panel-heading"><div><h2>Sức khỏe đường USB</h2><p>Kiểm tra điện thoại, IPv4, gateway và TCP qua card USB trong profile.@if(checked()){ Lần kiểm tra {{checked()}}.}</p></div></div>
+ <div class="monitor-tools">
+  @if(healthOptions().length){<label for="health-target">Đích kiểm tra</label><nb-select inputId="health-target" label="Đích kiểm tra USB" [options]="healthOptions()" [ngModel]="healthTarget()" (ngModelChange)="setHealthTarget($event)" [disabled]="checking()"/>}
+  <button class="button secondary" (click)="checkUsb()" [disabled]="checking()">{{checking()?'Đang kiểm tra…':'Kiểm tra đường USB'}}</button>
+ </div>
+ @if(healthError()){<p class="monitor-message field-error" role="alert">{{healthError()}}</p>}
+ @if(health().length){<ol class="usb-health-list">@for(step of health();track step.label){<li><strong>{{step.label}}</strong><span [class.field-error]="step.status==='fail'">{{step.status==='ok'?'Đạt':step.status==='fail'?'Lỗi':'Chưa rõ'}}</span><small>{{step.detail}}</small></li>}</ol>}
+</section>
+<section class="panel">
  <div class="panel-heading"><div><h2>TCP trên toàn máy</h2><p>IPv4 và IPv6 · {{rows().length}} dòng phù hợp</p></div></div>
  <div class="monitor-tools"><button class="button secondary" [attr.aria-pressed]="!listeners()" (click)="setTab(false)">Kết nối TCP</button>
  <button class="button secondary" [attr.aria-pressed]="listeners()" (click)="setTab(true)">Cổng lắng nghe</button>
+ <label for="monitor-application">Ứng dụng</label><nb-select inputId="monitor-application" label="Ứng dụng" [options]="apps()" [ngModel]="appFilter()" (ngModelChange)="appFilter.set($event);limit.set(50)"/>
  <input aria-label="Lọc kết nối TCP" placeholder="Tên ứng dụng, PID, IP, cổng…" [ngModel]="filter()" (ngModelChange)="setFilter($event)"></div>
- <div class="monitor-table"><table><thead><tr><th>Tiến trình</th><th>Địa chỉ cục bộ</th>@if(!listeners()){<th>Địa chỉ từ xa</th>}<th>Trạng thái</th></tr></thead>
- <tbody>@for(row of rows().slice(0,limit());track $index){<tr><td>{{row.process || 'Chưa rõ tên'}}<small>PID {{row.pid}}</small></td><td>{{row.local}}</td>@if(!listeners()){<td>{{row.remote}}</td>}<td>{{row.state}}</td></tr>}</tbody></table></div>
+ <div class="monitor-table"><table><thead><tr><th>Tiến trình</th><th>Địa chỉ cục bộ</th>@if(!listeners()){<th>Địa chỉ từ xa</th><th>Đường đi</th>}<th>Trạng thái</th></tr></thead>
+ <tbody>@for(row of rows().slice(0,limit());track $index){<tr><td>{{row.process || 'Chưa rõ tên'}}<small>PID {{row.pid}} @if(row.app && row.app!==row.process){· {{row.app}}}</small></td><td>{{row.local}}</td>@if(!listeners()){<td>{{row.remote}}</td><td><button class="text-button route-detail" [attr.aria-expanded]="expanded()===rowKey(row)" (click)="expanded.set(expanded()===rowKey(row)?'':rowKey(row))">{{row.path || 'Chưa xác định'}}</button>
+ @if(expanded()===rowKey(row)){<small>{{row.evidence || 'Chưa có thêm bằng chứng cho socket này.'}}</small>}</td>}<td>{{row.state}}</td></tr>}</tbody></table></div>
  @if(!rows().length){<p class="monitor-message muted">{{snapshot()?'Không có dòng phù hợp.':'Đang đọc bảng TCP…'}}</p>}
  @if(rows().length>limit()){<button class="button secondary monitor-more" (click)="limit.set(limit()+50)">Xem thêm 50 dòng</button>}
+</section>
+<section class="panel">
+ <div class="panel-heading"><div><h2>Dòng thời gian sự cố</h2><p>Trong phiên NetBridge này · tối đa 200 sự kiện</p></div></div>
+ <ol class="monitor-events">@for(event of (snapshot()?.events??[]).slice(0,showAllEvents()?200:10);track $index){<li><time>{{event.time*1000 | date:'HH:mm:ss'}}</time><strong>{{event.kind}}</strong><span>{{event.detail}}</span></li>}
+ @empty{<li>Chưa có sự kiện.</li>}</ol>
+ @if((snapshot()?.events?.length??0)>10){<button class="button secondary monitor-more" (click)="showAllEvents.set(!showAllEvents())">{{showAllEvents()?'Thu gọn':'Xem toàn bộ'}}</button>}
 </section>

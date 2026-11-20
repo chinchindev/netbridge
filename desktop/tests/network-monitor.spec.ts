@@ -22,3 +22,19 @@ test('monitor samples each adapter and filters connections and listeners separat
  await page.getByRole('button',{name:'Tiếp tục',exact:true}).click();
  await expect(page.getByRole('button',{name:'Tạm dừng',exact:true})).toBeVisible();
 });
+
+test('Teams includes WebView2 tunnel evidence, USB checks and the incident timeline',async({page},testInfo)=>{
+ await page.goto('/');
+ await page.getByRole('button',{name:'Giám sát mạng',exact:true}).click();
+ await page.getByRole('combobox',{name:'Ứng dụng',exact:true}).click();
+ await page.getByRole('option',{name:'ms-teams.exe',exact:true}).click();
+ await expect(page.locator('tbody')).toContainText('msedgewebview2.exe');
+ await expect(page.locator('tbody tr')).toHaveCount(1);
+ await page.getByRole('button',{name:/NetBridge → USB/}).click();
+ await expect(page.locator('tbody')).toContainText('example.test:443');
+ await page.getByRole('button',{name:'Kiểm tra đường USB'}).click();
+ await expect(page.locator('.usb-health-list li')).toHaveCount(4);
+ await expect(page.locator('.monitor-events')).toContainText('Ethernet 3');
+ await page.locator('.usb-health-list').scrollIntoViewIfNeeded();
+ await page.screenshot({path:testInfo.outputPath('evidence.png')});
+});

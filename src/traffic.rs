@@ -17,6 +17,8 @@ use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 #[serde(rename_all = "camelCase")]
 pub struct Connection {
     pub id: u64,
+    #[serde(skip)]
+    pub peer: Option<std::net::SocketAddr>,
     pub started: u64,
     pub host: String,
     pub port: u16,
@@ -57,7 +59,6 @@ impl Active {
 }
 #[derive(Default)]
 struct History {
-    next: u64,
     active: BTreeMap<u64, Active>,
     finished: VecDeque<Connection>,
     rejected: u64,
@@ -85,8 +86,8 @@ impl Traffic {
     }
     pub fn begin(&self) -> Trace {
         let mut h = self.0.lock().unwrap_or_else(|e| e.into_inner());
-        h.next += 1;
-        let id = h.next;
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        let id = NEXT.fetch_add(1,Ordering::Relaxed);
         let bytes = Arc::new(Bytes::default());
         h.active.insert(
             id,
@@ -95,6 +96,7 @@ impl Traffic {
                 bytes: bytes.clone(),
                 row: Connection {
                     id,
+                    peer: None,
                     started: SystemTime::now()
                         .duration_since(UNIX_EPOCH)
                         .unwrap_or_default()

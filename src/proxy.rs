@@ -72,9 +72,9 @@ impl Server {
                 tokio::select!{
                     _=shutdown.changed()=>break,
                     incoming=listener.accept()=>{
-                        let Ok((client,_))=incoming else{break};
+                        let Ok((client,peer))=incoming else{break};
                         let Ok(permit)=limit.clone().try_acquire_owned() else{monitor.reject();drop(client);continue};
-                        let connection_log=connections.clone();let cfg=config.clone();let trace=monitor.begin();let mut cancel=shutdown.clone();
+                        let connection_log=connections.clone();let cfg=config.clone();let trace=monitor.begin();trace.update(|r| r.peer=Some(peer));let mut cancel=shutdown.clone();
                         tokio::spawn(async move{
                             let _permit=permit;
                             tokio::select!{

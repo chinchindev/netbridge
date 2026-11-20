@@ -62,6 +62,7 @@ fn measured_traffic_is_bound_to_the_requested_source_and_counts_real_payload() {
         index: 0,
         ip: Ipv4Addr::new(127, 0, 0, 2),
         dns: vec![],
+        gateway: None,
         if_type: 6,
     };
     let result = speed::measure_with_client(
@@ -144,6 +145,7 @@ fn a_missing_adapter_reports_failure_instead_of_using_the_default_network() {
         index: 0,
         ip: Ipv4Addr::new(192, 0, 2, 10),
         dns: vec![],
+        gateway: None,
         if_type: 6,
     };
     let row = speed::measure_adapter(&adapter, &AtomicBool::new(false), &|_| {});

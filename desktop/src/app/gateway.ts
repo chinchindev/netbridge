@@ -27,9 +27,12 @@ export class Gateway {
    case 'network_monitor':{
     const tick=Math.floor(performance.now());
     return {interfaces:d.adapters.map((a,i)=>({id:a.id,name:a.name,received:String(tick*(i+1)*32),sent:String(tick*(i+1)*8)})),
-     endpoints:[{pid:120,process:'example.exe',local:'192.0.2.10:51000',remote:'198.51.100.20:443',state:'ESTABLISHED'},
-      {pid:420,process:'netbridge.exe',local:'127.0.0.1:17890',remote:null,state:'LISTEN'}],warnings:[]} as T;
+     targets:['example.test:443 · Web'],events:[{time:Math.floor(Date.now()/1000),kind:'USB / IPv4',detail:'Ethernet 3 · 198.51.100.10'}],
+     endpoints:[{pid:120,app:'example.exe',path:'Trực tiếp → LAN · Ethernet',evidence:'IP nguồn TCP 192.0.2.10',process:'example.exe',local:'192.0.2.10:51000',remote:'198.51.100.20:443',state:'ESTABLISHED'},
+      {pid:121,app:'ms-teams.exe',process:'msedgewebview2.exe',path:'NetBridge → USB · Ethernet 3',evidence:'Tunnel #3 · example.test:443 · quy tắc #1 · IP nguồn 198.51.100.10',local:'127.0.0.1:52100',remote:'127.0.0.1:17890',state:'ESTABLISHED'},
+      {pid:420,app:'netbridge.exe',path:'',evidence:'',process:'netbridge.exe',local:'127.0.0.1:17890',remote:null,state:'LISTEN'}],warnings:[]} as T;
    }
+   case 'usb_health':return [{label:'Điện thoại',status:'ok',detail:'Thiết bị mô phỏng'},{label:'IPv4',status:'ok',detail:'Ethernet 3 · 198.51.100.10'},{label:'Gateway',status:'ok',detail:'198.51.100.1 · 1 ms'},{label:'Đích qua USB',status:'ok',detail:'example.test:443 · TCP thành công'}] as T;
    case 'get_snapshot':return clone(d) as T;
    case 'recover_config':if(args['expectedRevision']!==d.configRevision||!d.recoveryAvailable)throw new Error('Chưa thể phục hồi cấu hình.');d.configError=null;d.recoveryAvailable=false;d.configRevision='recovered';break;
    case 'export_settings':{

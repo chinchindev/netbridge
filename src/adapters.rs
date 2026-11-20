@@ -9,6 +9,8 @@ pub struct Adapter {
     pub index: u32,
     pub ip: Ipv4Addr,
     pub dns: Vec<Ipv4Addr>,
+    #[serde(default)]
+    pub gateway: Option<Ipv4Addr>,
     pub if_type: u32,
 }
 impl Adapter {
@@ -100,6 +102,18 @@ pub fn enumerate() -> io::Result<Vec<Adapter>> {
                             index: a.Anonymous1.Anonymous.IfIndex,
                             ip,
                             dns,
+                            gateway: {
+                                let mut next = a.FirstGatewayAddress;
+                                let mut found = None;
+                                while !next.is_null() {
+                                    found = ipv4((*next).Address).filter(|ip| !ip.is_unspecified());
+                                    if found.is_some() {
+                                        break;
+                                    }
+                                    next = (*next).Next;
+                                }
+                                found
+                            },
                             if_type: a.IfType,
                         });
                     }

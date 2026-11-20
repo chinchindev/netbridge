@@ -50,6 +50,7 @@ fn main() {
             }
         }))
         .manage(state.clone())
+        .manage(Arc::new(monitor::Journal::default()))
         .manage(Arc::new(updates::UpdateStore::default()))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
@@ -61,6 +62,7 @@ fn main() {
             commands::stop_routing,
             settings::diagnostic_details,
             monitor::network_monitor,
+            monitor::usb_health,
             commands::valid_rule,
             commands::try_rule,
             commands::get_devices,
@@ -82,6 +84,10 @@ fn main() {
             settings::recover_config
         ])
         .setup(|app| {
+            monitor::start_history(
+                app.state::<Arc<AppState>>().inner().clone(),
+                app.state::<Arc<monitor::Journal>>().inner().clone(),
+            );
             let open = MenuItem::with_id(app, "open", "Mở NetBridge", true, None::<&str>)?;
             let stop = MenuItem::with_id(app, "stop", "Tắt phân luồng", true, None::<&str>)?;
             let exit =

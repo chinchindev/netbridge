@@ -20,10 +20,13 @@ pub struct Interface {
     pub received: String,
     pub sent: String,
 }
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct Endpoint {
     pub pid: u32,
     pub process: String,
+    pub app: String,
+    pub path: String,
+    pub evidence: String,
     pub local: String,
     pub remote: Option<String>,
     pub state: &'static str,
@@ -62,7 +65,42 @@ fn interfaces() -> io::Result<Vec<Interface>> {
         Ok(result)
     }
 }
-fn process_names() -> io::Result<HashMap<u32, String>> {
+/// Resolve local unicast addresses to interface indices; ambiguous addresses stay unattributed.
+pub fn address_indices() -> io::Result<HashMap<std::net::IpAddr, Option<u32>>> {
+    use std::net::IpAddr;
+    use windows_sys::Win32::Networking::WinSock::AF_UNSPEC;
+    let mut map = HashMap::new();
+    unsafe {
+        let mut table = ptr::null_mut();
+        let status = GetUnicastIpAddressTable(AF_UNSPEC, &mut table);
+        if status != 0 {
+            return Err(io::Error::from_raw_os_error(status as i32));
+        }
+        let rows = slice::from_raw_parts(
+            ptr::addr_of!((*table).Table).cast::<MIB_UNICASTIPADDRESS_ROW>(),
+            (*table).NumEntries as usize,
+        );
+        for row in rows {
+            let ip = match row.Address.si_family {
+                AF_INET => IpAddr::V4(Ipv4Addr::from(
+                    row.Address.Ipv4.sin_addr.S_un.S_addr.to_ne_bytes(),
+                )),
+                AF_INET6 => IpAddr::V6(Ipv6Addr::from(row.Address.Ipv6.sin6_addr.u.Byte)),
+                _ => continue,
+            };
+            map.entry(ip)
+                .and_modify(|index| {
+                    if *index != Some(row.InterfaceIndex) {
+                        *index = None
+                    }
+                })
+                .or_insert(Some(row.InterfaceIndex));
+        }
+        FreeMibTable(table.cast());
+    }
+    Ok(map)
+}
+fn process_names() -> io::Result<HashMap<u32, (String, u32)>> {
     let mut names = HashMap::new();
     unsafe {
         let handle = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -73,7 +111,10 @@ fn process_names() -> io::Result<HashMap<u32, String>> {
         item.dwSize = mem::size_of_val(&item) as u32;
         let mut more = Process32FirstW(handle, &mut item);
         while more != 0 {
-            names.insert(item.th32ProcessID, wide(&item.szExeFile));
+            names.insert(
+                item.th32ProcessID,
+                (wide(&item.szExeFile), item.th32ParentProcessID),
+            );
             more = Process32NextW(handle, &mut item);
         }
         CloseHandle(handle);
@@ -97,7 +138,27 @@ fn state_name(state: u32) -> &'static str {
         _ => "UNKNOWN",
     }
 }
-fn tcp(family: u16, names: &HashMap<u32, String>, out: &mut Vec<Endpoint>) -> io::Result<()> {
+fn application(pid: u32, names: &HashMap<u32, (String, u32)>) -> String {
+    let mut current = pid;
+    for _ in 0..24 {
+        let Some((name, parent)) = names.get(&current) else {
+            break;
+        };
+        if !name.eq_ignore_ascii_case("msedgewebview2.exe") {
+            return name.clone();
+        }
+        if *parent == current {
+            break;
+        }
+        current = *parent;
+    }
+    names.get(&pid).map(|p| p.0.clone()).unwrap_or_default()
+}
+fn tcp(
+    family: u16,
+    names: &HashMap<u32, (String, u32)>,
+    out: &mut Vec<Endpoint>,
+) -> io::Result<()> {
     let mut size = 4096;
     for _ in 0..4 {
         let mut buffer = vec![0u64; (size as usize).div_ceil(8)];
@@ -120,7 +181,10 @@ fn tcp(family: u16, names: &HashMap<u32, String>, out: &mut Vec<Endpoint>) -> io
         let mut push = |pid, state, local, remote| {
             out.push(Endpoint {
                 pid,
-                process: names.get(&pid).cloned().unwrap_or_default(),
+                process: names.get(&pid).map(|p| p.0.clone()).unwrap_or_default(),
+                app: application(pid, names),
+                path: String::new(),
+                evidence: String::new(),
                 local,
                 remote: if state == 2 { None } else { Some(remote) },
                 state: state_name(state),
@@ -206,5 +270,43 @@ mod tests {
             && e.local == addr
             && e.remote.is_none()
             && e.state == "LISTEN"));
+    }
+}
+
+/// Send one IPv4 echo using the selected interface's source address.
+pub fn gateway_echo(source: Ipv4Addr, destination: Ipv4Addr) -> io::Result<u32> {
+    unsafe {
+        let handle = IcmpCreateFile();
+        if handle == INVALID_HANDLE_VALUE {
+            return Err(io::Error::last_os_error());
+        }
+        let mut reply = [0u64; 16];
+        let data = *b"NetBridge";
+        let count = IcmpSendEcho2Ex(
+            handle,
+            ptr::null_mut(),
+            None,
+            ptr::null_mut(),
+            u32::from_ne_bytes(source.octets()),
+            u32::from_ne_bytes(destination.octets()),
+            data.as_ptr().cast(),
+            data.len() as u16,
+            ptr::null(),
+            reply.as_mut_ptr().cast(),
+            mem::size_of_val(&reply) as u32,
+            1500,
+        );
+        let result = if count == 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            let echo = &*reply.as_ptr().cast::<ICMP_ECHO_REPLY>();
+            if echo.Status == 0 && echo.Address == u32::from_ne_bytes(destination.octets()) {
+                Ok(echo.RoundTripTime)
+            } else {
+                Err(io::Error::other(format!("ICMP {}", echo.Status)))
+            }
+        };
+        IcmpCloseHandle(handle);
+        result
     }
 }

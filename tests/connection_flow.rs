@@ -100,6 +100,7 @@ fn no_implicit_fallback_to_another_usb_adapter() {
         index: 1,
         ip: "192.0.2.1".parse().unwrap(),
         dns: vec![],
+        gateway: None,
         if_type: 6,
     };
     assert!(usb_candidate(&cfg, &[adapter.clone()]).unwrap().is_none());
@@ -117,6 +118,7 @@ fn auto_suggestions_do_not_choose_between_two_usb_adapters() {
         index: 1,
         ip: "192.0.2.1".parse().unwrap(),
         dns: vec![],
+        gateway: None,
         if_type: 6,
     };
     let mut second = first.clone();

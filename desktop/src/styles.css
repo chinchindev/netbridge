@@ -96,3 +96,9 @@ nb-select{display:inline-block;min-width:0;max-width:100%}
 .monitor-table{overflow:auto}.monitor-table table{width:100%;border-collapse:collapse;text-align:left;font-size:12px}
 .monitor-table td,.monitor-table th{padding:9px 14px;border-top:1px solid var(--line);overflow-wrap:anywhere}
 .monitor-table th{color:var(--muted)}.monitor-more{margin:10px 22px}
+
+.usb-health-list,.monitor-events{list-style:none;margin:0;padding:0 22px 14px}
+.usb-health-list li,.monitor-events li{display:grid;align-items:baseline;gap:9px 12px;border-top:1px solid var(--line);padding:9px 0;font-size:13px;overflow-wrap:anywhere}
+.usb-health-list li{grid-template-columns:110px 60px 1fr}.monitor-events li{grid-template-columns:65px minmax(72px,110px) 1fr}
+.monitor-events time,.usb-health-list small{color:var(--muted);font-size:12px}.monitor-tools label{margin-bottom:0}
+.monitor-table .route-detail{white-space:normal;text-align:left}

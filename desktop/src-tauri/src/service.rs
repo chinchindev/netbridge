@@ -450,6 +450,9 @@ impl Session {
         );
         Ok(())
     }
+    pub(crate) fn listener_port(&self) -> Option<u16> {
+        self.server.as_ref().map(|server| server.port)
+    }
     pub fn owned(&self) -> bool {
         self.proxy_enabled
     }
@@ -1047,6 +1050,7 @@ mod tests {
             index: 1,
             ip: "192.0.2.1".parse().unwrap(),
             dns: vec![],
+        gateway: None,
             if_type: 6,
         };
         let saved = session

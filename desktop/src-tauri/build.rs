@@ -8,6 +8,7 @@ fn main() {
             "stop_routing",
             "diagnostic_details",
             "network_monitor",
+            "usb_health",
             "valid_rule",
             "try_rule",
             "get_devices",

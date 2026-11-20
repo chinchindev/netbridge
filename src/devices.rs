@@ -120,6 +120,11 @@ pub struct UsbState {
     pub enabled: bool,
     samsung: bool,
 }
+impl UsbState {
+    pub fn service_verified(&self) -> bool {
+        self.samsung
+    }
+}
 fn authorized_device(adb: &str, serial: &str) -> io::Result<Device> {
     list(adb)?
         .into_iter()
